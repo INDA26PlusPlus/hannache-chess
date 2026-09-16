@@ -48,12 +48,19 @@ struct BoardRepresentation {  // a struct is a collection of data types
     position: BitboardType,//how about one board for position and one for all the attacked spots
     attack: BitboardType //So here you will show which place the piece is able to attack 
     //Ig you can use the same board for all the rooks
-
 }
 
-// 6 2 9 6 5 1 0
+struct MergedBoards {
+    white_pos: BitboardType,
+    black_pos: BitboardType,
+    white_attack: BitboardType,
+    black_attack: BitboardType,
+    occupied: BitboardType,
+    not_occupied: BitboardType
+}
 
-fn initialize_pieces() -> Vec<BoardRepresentation>{
+
+fn initialize_pieces() -> Vec<BoardRepresentation>{ //piece, color, position, attack. returns a vector
     //Exaple of instance of this class
     let mut white_pawn = BoardRepresentation{
         piece: PieceType::Pawn,
@@ -145,59 +152,39 @@ fn initialize_pieces() -> Vec<BoardRepresentation>{
     //Returns array with all the pieces
 }
 
-// fn initialize_viarables(){ //maybe not a function later but now
-//     white_castled = false;
-//     black_castled = false;
-//     turn 
-//     moves_to_stalemate = 50 //countdown hahahah
-
-// }
-
 fn merging_boards(all_pieces: &Vec<BoardRepresentation>) -> Vec<BitboardType>{
     let mut all_white_position:BitboardType = all_pieces[0].position;
     for i in 1..6 {
-        all_white_position = all_white_position&all_pieces[i].position;
+        all_white_position = all_white_position|all_pieces[i].position;
     }
 
     let mut all_white_attack:BitboardType = all_pieces[0].attack;
     for i in 1..6 {
-        all_white_attack = all_white_attack&all_pieces[i].attack;
+        all_white_attack = all_white_attack|all_pieces[i].attack;
     }
 
 
     let mut all_black_position:BitboardType = all_pieces[6].position;
     for i in 6..12{
-        all_black_position = all_black_position&all_pieces[i].position;
+        all_black_position = all_black_position|all_pieces[i].position;
     }
 
     let mut all_black_attack:BitboardType = all_pieces[6].attack;
     for i in 6..12{
-        all_black_attack = all_black_attack&all_pieces[i].attack;
+        all_black_attack = all_black_attack|all_pieces[i].attack;
     }
     
-    let mut all_occupied:BitboardType = all_black_position&all_white_position;
-    let mut not_occupied:BitboardType = !&all_occupied; //Not occupied.
+    let mut all_occupied:BitboardType = all_black_position|all_white_position;
+    let mut not_occupied:BitboardType = !all_occupied; //Not occupied.
 
     let mut merged_boards = vec![all_white_position, all_white_attack, all_black_position, all_black_attack, all_occupied, not_occupied];
     return merged_boards;
 }
 
-
-//I can later check specific traits of this variable
-// if white_pawn.color == ColorType::White {
-//     //do something
-// }
-
-
-//You chose a part of the board then math it will all the pieces. if it is that piece then 
-//How do i modify bitboards
-
-fn taking_input() -> [u64; 2] {
+fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
 
     loop {
-    //such as h5
-
-    //taking the input
+    //such as h5, taking the input
     let mut input: String = String::new();
     io::stdin().read_line(&mut input).expect("Failed");
 
@@ -213,88 +200,78 @@ fn taking_input() -> [u64; 2] {
 
     let a = input.next();
     let b = input.next();
-
     let mut coords: [u64; 2] = [0, 0]; //this is an array, always size 2
 
-
     if let (Some(x), Some(y)) = (a, b) { //Unwrapping
-
-    if !allowed_a.contains(x) || !allowed_b.contains(y) {
-        continue
-    } else {
-        match x {
-            'a' => {
-                coords[0] = 0
+        if !allowed_a.contains(x) || !allowed_b.contains(y) {
+            continue
+        } else {
+            match x {
+                'a' => {
+                    coords[0] = 0
+                }
+                'b' => {
+                    coords[0] = 1
+                }
+                'c' => {
+                    coords[0] = 2
+                }
+                'd' => {
+                    coords[0] = 3
+                }
+                'e' => {
+                    coords[0] = 4
+                }
+                'f' => {
+                    coords[0] = 5
+                }
+                'g' => {
+                    coords[0] = 6
+                }
+                'h' => {
+                    coords[0] = 7
+                }
+                _ => {
+                    unreachable!()
+                }
             }
-            'b' => {
-                coords[0] = 1
-            }
-            'c' => {
-                coords[0] = 2
-            }
-            'd' => {
-                coords[0] = 3
-            }
-            'e' => {
-                coords[0] = 4
-            }
-            'f' => {
-                coords[0] = 5
-            }
-            'g' => {
-                coords[0] = 6
-            }
-            'h' => {
-                coords[0] = 7
-            }
-            _ => {
-                unreachable!()
+            match y {
+                '1' => {
+                    coords[1] = 0
+                }
+                '2' => {
+                    coords[1] = 1
+                }
+                '3' => {
+                    coords[1] = 2
+                }
+                '4' => {
+                    coords[1] = 3
+                }
+                '5' => {
+                    coords[1] = 4
+                }
+                '6' => {
+                    coords[1] = 5
+                }
+                '7' => {
+                    coords[1] = 6
+                }
+                '8' => {
+                    coords[1] = 7
+                }
+                _ => {
+                    unreachable!()
+                }
             }
         }
-        match y {
-            '1' => {
-                coords[1] = 0
-            }
-            '2' => {
-                coords[1] = 1
-            }
-            '3' => {
-                coords[1] = 2
-            }
-            '4' => {
-                coords[1] = 3
-            }
-            '5' => {
-                coords[1] = 4
-            }
-            '6' => {
-                coords[1] = 5
-            }
-            '7' => {
-                coords[1] = 6
-            }
-            '8' => {
-                coords[1] = 7
-            }
-            _ => {
-                unreachable!()
-            }
-        }
-    }}
-    else{continue}
+    } else{continue}
 
     return coords;
     }
 }
 
-// input = input()
-// a, b = input().split()
-// if a not in "abcdefghijklmnopqrstuvwxyzåäö" or b not in "0123456789" or len(input) != 2:
-//     print("try again")
-
-fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType {
-    //inputs coordinates and makes bitboard.
-    
+fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType { //inputs coordinates and makes bitboard.
     let bitboard_index: BitboardType = (row+1) * 8 - (column+1); // this is so that origo is at bottom left 
     //now row and column are "dead"?
     let bitboard_chosen: BitboardType = 0b1<<bitboard_index;
@@ -304,32 +281,29 @@ fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType {
     // io::stdin().read_line(&mut column).expect("Failed to read");
     //rather than taking in inputs take in parameters instead.
 }
-//For a bitboard like: 0b0011 AND 0b0010 -> 0b0 ? I dont really get it. 
 
-//later check which type it is and based on the piece type it is you modify the attack position. match case is good for this
-//check if something is in the way too
-
-fn moving_piece(initial_board:BitboardType, old_coords:[u64; 2], new_coords:[u64; 2]) -> BitboardType{
+fn moving_piece(initial_board:BitboardType, old_coords:[u64; 2], new_coords:[u64; 2]) -> BitboardType{ //changes the bitboard so that it has the new and removes old pos
     let old_boards = 1u64 << ((old_coords[1]+1)*8 - (old_coords[0]+1));
     let new_boards = 1u64 << ((new_coords[1]+1)*8 - (new_coords[0]+1));
-    let new_board: BitboardType = (initial_board&new_boards)|old_boards; //get rid of old and add the new
-
+    let new_board: BitboardType = (initial_board& !old_boards)|new_boards; //get rid of old and add the new
     return new_board;
 }
 
-fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> BitboardType{
+fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> BitboardType{ //takes in one chosen type and the merged boards then returns the new attack_board
     //updates one piece at a time
     let left_wall:BitboardType = 0b00000001_00000001_00000001_00000001_00000001_00000001_00000001_00000001; //gotta think hard. precomputing
     let right_wall:BitboardType = 0b00000001_10000000_10000000_10000000_10000000_10000000_10000000_10000000;
     let up_wall:BitboardType = 0b11111111_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
     let down_wall:BitboardType = 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_11111111;
 
+    let mut comerades = 0b0;
+    let mut enemies = 0b0;
     if chosen.color == ColorType::White {
-        let comerades = merged_boards[0];
-        let enemies = merged_boards[2];
+        comerades = merged_boards[0];
+        enemies = merged_boards[2];
     } else {
-        let comerades = merged_boards[2];
-        let enemies = merged_boards[0];
+        comerades = merged_boards[2];
+        enemies = merged_boards[0];
     }
 
     let mut new_attack_board:BitboardType = 0b0;
@@ -339,39 +313,44 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             if chosen.color == ColorType::White {
 
                 // chosen.position 
-                for i in 0..64 {
-                    let bit = (chosen.position >> i)&1; //this takes the first thing
-                    if bit%8 != 0 {
-                    new_attack_board = new_attack_board | ((0b1<<bit)<<9);
+                for square in 0..64{
+                    let mut piece_bitboard = 1u64<<square;
+                    if piece_bitboard & chosen.position == 0b0{
+                        continue;
                     }
-                    if (bit+1)%8 != 0{
-                    new_attack_board = new_attack_board | ((0b1<<bit)<<7);
+                
+                    if square%8 != 0 {
+                        new_attack_board = new_attack_board | (piece_bitboard<<9);
+                    }
+                    if (square+1)%8 != 0{
+                        new_attack_board = new_attack_board | (piece_bitboard<<7);
                     }
                     new_attack_board = new_attack_board & !comerades; //everything thats on comerades gets erased.
                 
                     //either looop through and get all the individual positions
                     //or take the binary thingie and 
                     }
-            } 
-            else {
-                for i in 0..64 {
-                    let bit = (chosen.position >> i)&1; //this takes the first thing
-                    
-                    if bit%8 != 0 {
-                    new_attack_board = new_attack_board | ((0b1<<bit)>>7);
+            } else {
+                for square in 0..64{
+                    let mut piece_bitboard = 1u64<<square;
+                    if piece_bitboard & chosen.position == 0b0{
+                        continue;
                     }
-                    if (bit+1)%8 != 0{
-                    new_attack_board = new_attack_board | ((0b1<<bit)>>9);
+                    if square%8 != 0 {
+                        new_attack_board = new_attack_board | (piece_bitboard>>7);
+                    }
+                    if (square+1)%8 != 0{
+                        new_attack_board = new_attack_board | (piece_bitboard>>9);
                     }
                     new_attack_board = new_attack_board & !comerades;   
-            }}
-
+                }
+            }
             return new_attack_board;
         }
 
         PieceType::Bishop => {
             // let mut pos:u64 = 0;
-            let order = [(i32, bool, u64); 4] = [
+            let order:[(i32, bool, u64); 4] = [
                 (7, true, left_wall|up_wall),
                 (9, true, right_wall|up_wall),
                 (7, false, left_wall|down_wall),
@@ -379,7 +358,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             ];
 
             for square in 0..64{
-                let piece_bitboard = 1u64<<square;
+                let mut piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
@@ -413,11 +392,12 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             
             // <<10, >>6, >>10, <<6, >>17, >>15, <<17, <<15
 
-            for square in 0..64{
-                let piece_bitboard = 1u64<<square;
+            for square in 0..64 {
+                let mut piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
+            
                 
 
                 let mut step = 0;
@@ -444,7 +424,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                 }
                 //check wall
                 for square in 0..64{
-                let piece_bitboard = 1u64<<square;
+                let mut piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
@@ -517,21 +497,21 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                     piece_bitboard = piece_bitboard >> 8; //moving to the up by one step
                     step += 1;
                 }
-            }
+            }}
 
             return new_attack_board
-        }}
+            }
 
         PieceType::Rook => {
             let order = [
-                (1, false, left_wall),
-                (1, true, right_wall),
+                (1, false, left_wall), //minskar
+                (1, true, right_wall), //ökar
                 (8, false, down_wall),
                 (8, true, up_wall)
             ];
             //step, förminskar/is_left, wall
             for square in 0..64{
-                let piece_bitboard = 1u64<<square;
+                let mut piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
@@ -541,7 +521,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                         if piece_bitboard & wall != 0b0 {
                             continue //crash into the wall
                         }
-                        piece_bitboard = if is_left {piece_bitboard << steps} else {piece_bitboard >> steps};
+                        piece_bitboard = if is_left {piece_bitboard << step} else {piece_bitboard >> step};
                         if piece_bitboard & comerades != 0b0 {
                             break
                         }
@@ -576,7 +556,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
 
             ];
             for square in 0..64{
-                let piece_bitboard = 1u64<<square;
+                let mut piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
@@ -586,7 +566,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                         if piece_bitboard & wall != 0b0 {
                             continue //crash into the wall
                         }
-                        piece_bitboard = if is_left {piece_bitboard << steps} else {piece_bitboard >> steps};
+                        piece_bitboard = if is_left {piece_bitboard << step} else {piece_bitboard >> step};
                         if piece_bitboard & comerades != 0b0 {
                             break
                         }
@@ -604,17 +584,39 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
         
         PieceType::King => {
             //up down side and side check all walls
+            
+            let mut piece_bitboard = chosen.position;
+            //<1, >1, <8, >8, <7, >7, <9, >9
+            //up left, up, up right, right, right down, down, down left, left
+            let order = [
+                (7, true, up_wall&left_wall),
+                (8, true, up_wall),
+                (9, true, up_wall&right_wall),
+                (1, true, right_wall),
+                (7, false, down_wall&right_wall), //minskar
+                (8, false, down_wall),
+                (9, false, down_wall&left_wall),
+                (1, false, left_wall)
+            ];
+            for (step, is_left, wall) in order{
+
+                if piece_bitboard & wall == 0b0{
+                    new_attack_board = if is_left {new_attack_board | piece_bitboard<<step} else {new_attack_board | piece_bitboard>>step};
+                }
+            }
+            return new_attack_board
         }
-
-        //what does this do?? like what does it check?
-
-
+            //Make a board with all the possible moves then & it with !wall
     }
-}}
+}
+
+fn pawn_upgrades(){
+    //change the struct, take away one pawn and add one of the piece you chose
+}
 
 fn checking_check(attack_board:BitboardType, king:BoardRepresentation){
     //if any of the merged attacks overlap with king
-    if attack_board & king.pos != 0b0 {
+    if attack_board & king.position != 0b0 {
 
     }
 }
@@ -632,6 +634,40 @@ fn check_pawn_upgrades(){
     //honestly enough to check those who have moved
 }
 
+fn print_board(bitboard:BitboardType) {
+    println!("*-------------------*");
+    for row in (0..8).rev(){
+        print!("{} | ", row+1);
+        for column in 0..8{
+            let square = row*8+column;
+            let thing_there = (bitboard >> square) & 0b1;
+            if thing_there != 0{
+                print!("1 ");
+            } else {
+                print!(". ");
+            }
+        }
+        println!("|");
+    }
+    println!("*-------------------*")
+}
+
+fn filter_noneplayable_squares(start_bitboard:BitboardType, merged_boards:&Vec<u64>, turn:ColorType) -> bool{
+    if start_bitboard&merged_boards[4] != 0b0{
+        //position is not occupied
+        return false;
+    }
+    if turn == ColorType::White{ //I'm sorry this is burning my eyes.
+        if merged_boards[0] & start_bitboard == 0b0{ //you chose a black piece
+            return false;
+        }
+    } else { //its blacks turn
+        if merged_boards[2] & start_bitboard == 0b0{ //You chose white piece
+            return false;
+        }
+    }
+}
+
 fn all(column: u64, row: u64, checking: Vec<BoardRepresentation>){
         
     //initializes all the pieces and merged boards and intializes the position of each merged 
@@ -641,115 +677,140 @@ fn all(column: u64, row: u64, checking: Vec<BoardRepresentation>){
     let turn = ColorType::White;
 
     loop {
-        
+        let start_coords = taking_input();
+        let to_coords = taking_input();
 
-    let start_coords = taking_input();
-    let to_coords = taking_input();
-
-    //creates a bitboard of the input coordiantes
-    let start_bitboard: BitboardType = input_coordinates(start_coords[0], start_coords[1]);
-    let to_bitboard: BitboardType = input_coordinates(to_coords[0], to_coords[1]);
+        //creates a bitboard of the input coordiantes
+        let start_bitboard: BitboardType = input_coordinates(start_coords[0], start_coords[1]);
+        let to_bitboard: BitboardType = input_coordinates(to_coords[0], to_coords[1]);
 
 
-    //if you chose nothing or chose wrong color or to somewhere you can't go then stop.
-    if start_bitboard&merged_boards[i_occupied] != 0b0{
-        //position is not occupied
-        continue
-    }
-    if turn == ColorType::White{ //I'm sorry this is burning my eyes.
-        if merged_boards[i_white_pos] & start_bitboard == 0b0{ //you chose a black piece
-            continue;
+        //FILTER: if you chose nothing or chose wrong color or to somewhere you can't go then stop.
+        if start_bitboard&merged_boards[i_occupied] != 0b0{
+            //position is not occupied
+            continue
         }
-    } else { //its blacks turn
-        if merged_boards[i_black_pos] & start_bitboard == 0b0{ //You chose white piece
-            continue;
+        if turn == ColorType::White{ //I'm sorry this is burning my eyes.
+            if merged_boards[i_white_pos] & start_bitboard == 0b0{ //you chose a black piece
+                continue;
+            }
+        } else { //its blacks turn
+            if merged_boards[i_black_pos] & start_bitboard == 0b0{ //You chose white piece
+                continue;
+            }
         }
-    }
+        //TO DO: If you chose a spot where you can't go filter away too 
+        //just pawn has a seperate can_walk_to, others can_walk_to = attack.
 
 
-    //identify the piece that was chosen using all_pieces
-    //0..6 are the white 6..12 are the black.
+        //identify the piece that was chosen using all_pieces
+        //0..6 are the white 6..12 are the black.
 
-    let mut initial_board:u64 = 0; 
-    let mut current_piece_i:usize = 0;
-    if turn == ColorType::White{
-    for i in 0..6 { //now this has to become something otherwise its unsafe
-        if start_bitboard&all_pieces[i].position != 0b0{
-            //you found it!
-            current_piece_i = i;
-            initial_board = all_pieces[i].position;
-            break;
+        let mut initial_board:u64 = 0; 
+        let mut current_piece_i:usize = 0;
+        if turn == ColorType::White{
+        for i in 0..6 { //now this has to become something otherwise its unsafe
+            if start_bitboard&all_pieces[i].position != 0b0{
+                //you found it!
+                current_piece_i = i;
+                initial_board = all_pieces[i].position;
+                break;
+            }
+        }} else{
+        for i in 6..12 { //now this has to become something otherwise its unsafe
+            if start_bitboard&all_pieces[i].position != 0b0{
+                //you found it!
+                current_piece_i = i;
+                initial_board = all_pieces[i].position;
+                break;
+            }
+        }}
+
+        //check for pawn upgrades.
+        if all_pieces[current_piece_i].piece == PieceType::Pawn && (to_coords[1] == 0 || to_coords[1] == 7){
+            pawn_upgrades(all_pieces[current_piece_i])
         }
-    }} else{
-    for i in 6..12 { //now this has to become something otherwise its unsafe
-        if start_bitboard&all_pieces[i].position != 0b0{
-            //you found it!
-            current_piece_i = i;
-            initial_board = all_pieces[i].position;
-            break;
+
+
+        //-------temporarily move it to check checkmate---------------------------------------.
+
+        let temporary_board = moving_piece(initial_board, start_coords, to_coords);
+        //this is after the move
+        let current_piece_type:PieceType = all_pieces[current_piece_i].piece;
+        let current_piece_color:ColorType = all_pieces[current_piece_i].color;
+
+        let mut temp_current: BoardRepresentation = BoardRepresentation{
+            piece: (all_pieces[current_piece_i].piece),
+            color: all_pieces[current_piece_i].color,
+            position: temporary_board,
+            attack: 0b0
+        };
+        //recompute all the attack pos both white and black. except the piece i am right now current_piece_i ----
+
+        //create a list for all the pieces i will be going through
+        let mut update_attack_list:Vec<BoardRepresentation> = Vec::with_capacity(6);
+        if turn == ColorType::White{
+            for i in 0..6 {
+                if all_pieces[i].piece != current_piece_type {
+                    update_attack_list[i] = all_pieces[i];
+                    continue
+                }
+                update_attack_list[i] = temp_current
+            }
         }
-    }}
-
-    //check for pawn upgrades.
-    if all_pieces[i].piece == PieceType::Pawn && (to_coords[1] == 0 || to_coords[1] == 7){
-        pawn_upgrades(all_pieces[i])
-    }
 
 
-    //-------temporarily move it to check checkmate.
-
-    let temporary_board = moving_piece(initial_board, start_coords, to_coords);
-    //this is after the move
-
-    //recompute all the attack pos both white and black. except the piece i am right now current_piece_i
-
-    //merge the pieces
-    let mut temporary_new_merged:BitboardType = 0b0;
-    if turn == ColorType::White{
+        let temp_merged_boards = merged_boards; //I hope this copies the merged boards
+        //merge the piecess positions (ex, white_merged_pos)
+        let mut temporary_new_merged:BitboardType = 0b0;
         for i in 0..6{
             if i == current_piece_i{
                 temporary_new_merged = temporary_new_merged | temporary_board;
-                continue
+                continue;
             }
             temporary_new_merged = temporary_new_merged | all_pieces[i].position;
         }
-    } else {
+        temp_merged_boards[0] = temporary_new_merged; //the white_pos position
+
+        temporary_new_merged = 0b0;
         for i in 6..12 { 
             if i == current_piece_i{
                 temporary_new_merged = temporary_new_merged | temporary_board;
                 continue
             }
             temporary_new_merged = temporary_new_merged | all_pieces[i].position;
+            }
+        //update the attack for all the positions. 
+        
+
+
+        //check if it leads to check or not for yourself.
+        //if check dont allow -> try again
+        //if not check -> continue
+
+        //------------
+
+
+        //I'm so confused what is this doing?
+        let mut theres_a_piece:bool = false;
+        for i in 0..12 {
+            if &start_bitboard&checking[i].position != 0b0 { //
+                let mut chosen =  BoardRepresentation{
+                    position: start_bitboard,
+                    piece: checking[i].piece,
+                    color: checking[i].color,
+                    attack: 0b0
+                };
+                theres_a_piece = true;
+                break;
+            }
         }
-    }
-
-    //update the attack
-
-    //all the positions. 
-
-    //------------
+        //else: theres no piece on the spot you've chosen.
+        // if made_a_struct == false {
+        //     //you havent made a struct
 
 
-    //I'm so confused what is this doing?
-    let mut theres_a_piece:bool = false;
-    for i in 0..12 {
-        if &start_bitboard&checking[i].position != 0b0 { //
-            let mut chosen =  BoardRepresentation{
-                position: start_bitboard,
-                piece: checking[i].piece,
-                color: checking[i].color,
-                attack: 0b0
-            };
-            theres_a_piece = true;
-            break;
-        }
-    }
-    //else: theres no piece on the spot you've chosen.
-    // if made_a_struct == false {
-    //     //you havent made a struct
-
-
-//     }
+    //     }
 }}
 
 
