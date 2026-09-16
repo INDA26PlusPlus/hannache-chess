@@ -333,6 +333,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
     }
 
     let mut new_attack_board:BitboardType = 0b0;
+
     match chosen.piece{
         PieceType::Pawn => {
             if chosen.color == ColorType::White {
@@ -370,7 +371,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
 
         PieceType::Bishop => {
             // let mut pos:u64 = 0;
-            let order = [(u64, bool, u64); 4] = [
+            let order = [(i32, bool, u64); 4] = [
                 (7, true, left_wall|up_wall),
                 (9, true, right_wall|up_wall),
                 (7, false, left_wall|down_wall),
@@ -389,15 +390,15 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                             break
                         }
 
-                        place_bitboard = if if_left {place_bitboard << steps} else {place_bitboard >> steps};
-                        if place_bitboard & comerades != 0b0 {
+                        piece_bitboard = if is_left {piece_bitboard << steps} else {piece_bitboard >> steps};
+                        if piece_bitboard & comerades != 0b0 {
                             break
                         }
-                        if place_bitboard & enemies != 0b0{
-                            new_attack_board = new_attack_board | place_bitbaord;
+                        if piece_bitboard & enemies != 0b0{
+                            new_attack_board = new_attack_board | piece_bitboard;
                             break
                         }
-                        new_attack_board = new_attack_board | place_bitboard;
+                        new_attack_board = new_attack_board | piece_bitboard;
                     }
                 }
             }
@@ -410,25 +411,195 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             //doesnt matetr if its comerade or enemy
             //but check where you're going if theres comerade there. enemy doesnt matter at the palce you're landing
             
+            // <<10, >>6, >>10, <<6, >>17, >>15, <<17, <<15
+
+            for square in 0..64{
+                let piece_bitboard = 1u64<<square;
+                if piece_bitboard & chosen.position == 0b0{
+                    continue;
+                }
+                
+
+                let mut step = 0;
+                //right right
+                // for i in 1..=2{
+                loop {
+                    if step == 2{ // x x x. 
+                        //checck wall up and wall down
+                        if piece_bitboard & up_wall == 0b0{
+                            //can go up
+                            new_attack_board = new_attack_board | (piece_bitboard<<8)
+                        }
+                        if piece_bitboard & down_wall == 0b0{
+                            //can go down
+                            new_attack_board = new_attack_board | (piece_bitboard>>8)
+                        }
+                    }
+                    if piece_bitboard & right_wall != 0b0 { //if zero or first step is on the wall
+                        break;
+                    }
+                    piece_bitboard = piece_bitboard >> 1; //moving to the right by one step
+                    step += 1;
+
+                }
+                //check wall
+                for square in 0..64{
+                let piece_bitboard = 1u64<<square;
+                if piece_bitboard & chosen.position == 0b0{
+                    continue;
+                }
+                
+
+                step = 0;
+                //left left
+                // >>1
+                loop {
+                    if step == 2{ // x x x. 
+                        //checck wall up and wall down
+                        if piece_bitboard & up_wall == 0b0{
+                            //can go up
+                            new_attack_board = new_attack_board | (piece_bitboard<<8)
+                        }
+                        if piece_bitboard & down_wall == 0b0{
+                            //can go down
+                            new_attack_board = new_attack_board | (piece_bitboard>>8)
+                        }
+                    }
+                    if piece_bitboard & left_wall != 0b0 { //if zero or first step is on the wall
+                        break;
+                    }
+                    piece_bitboard = piece_bitboard << 1; //moving to the left by one step
+                    step += 1;
+
+                }
+
+                step = 0;
+                // up up
+                // << 8
+                loop {
+                    if step == 2{ // x x x. 
+                        //checck wall up and wall down
+                        if piece_bitboard & right_wall == 0b0{
+                            //can go up
+                            new_attack_board = new_attack_board | (piece_bitboard<<1)
+                        }
+                        if piece_bitboard & left_wall == 0b0{
+                            //can go down
+                            new_attack_board = new_attack_board | (piece_bitboard>>1)
+                        }
+                    }
+                    if piece_bitboard & up_wall != 0b0 { //if zero or first step is on the wall
+                        break;
+                    }
+                    piece_bitboard = piece_bitboard << 8; //moving to the up by one step
+                    step += 1;
+
+                }
+
+                step = 0;
+                // down down
+                // << 8
+                loop {
+                    if step == 2{ // x x x. 
+                        //checck wall up and wall down
+                        if piece_bitboard & right_wall == 0b0{
+                            //can go up
+                            new_attack_board = new_attack_board | (piece_bitboard<<1)
+                        }
+                        if piece_bitboard & left_wall == 0b0{
+                            //can go down
+                            new_attack_board = new_attack_board | (piece_bitboard>>1)
+                        }
+                    }
+                    if piece_bitboard & down_wall != 0b0 { //if zero or first step is on the wall
+                        break;
+                    }
+                    piece_bitboard = piece_bitboard >> 8; //moving to the up by one step
+                    step += 1;
+                }
+            }
+
+            return new_attack_board
+        }}
+
+        PieceType::Rook => {
+            let order = [
+                (1, false, left_wall),
+                (1, true, right_wall),
+                (8, false, down_wall),
+                (8, true, up_wall)
+            ];
+            //step, förminskar/is_left, wall
             for square in 0..64{
                 let piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
 
-                
+                for (step, is_left, wall) in order {
+                    for i in 0..7{
+                        if piece_bitboard & wall != 0b0 {
+                            continue //crash into the wall
+                        }
+                        piece_bitboard = if is_left {piece_bitboard << steps} else {piece_bitboard >> steps};
+                        if piece_bitboard & comerades != 0b0 {
+                            break
+                        }
+                        if piece_bitboard & enemies != 0b0{
+                            new_attack_board = new_attack_board | piece_bitboard;
+                            break
+                        }
+                        new_attack_board = new_attack_board | piece_bitboard;
+                    }
 
-                //check wall
-        
-        }
-
-        PieceType::Rook => {
+                    }
+                }
+            return new_attack_board;
             //up down side to side
             //check all walls
+
         }
 
         PieceType::Queen => {
             //rook + bishop
+            let order = [
+                //rook
+                (1, false, left_wall),
+                (1, true, right_wall),
+                (8, false, down_wall),
+                (8, true, up_wall),
+                //bishop:
+                (7, true, left_wall|up_wall),
+                (9, true, right_wall|up_wall),
+                (7, false, left_wall|down_wall),
+                (9, false, right_wall|down_wall)
+
+            ];
+            for square in 0..64{
+                let piece_bitboard = 1u64<<square;
+                if piece_bitboard & chosen.position == 0b0{
+                    continue;
+                }
+
+                for (step, is_left, wall) in order {
+                    for i in 0..7{
+                        if piece_bitboard & wall != 0b0 {
+                            continue //crash into the wall
+                        }
+                        piece_bitboard = if is_left {piece_bitboard << steps} else {piece_bitboard >> steps};
+                        if piece_bitboard & comerades != 0b0 {
+                            break
+                        }
+                        if piece_bitboard & enemies != 0b0{
+                            new_attack_board = new_attack_board | piece_bitboard;
+                            break
+                        }
+                        new_attack_board = new_attack_board | piece_bitboard;
+                    }
+
+                    }
+                }
+            return new_attack_board;
         }
         
         PieceType::King => {
