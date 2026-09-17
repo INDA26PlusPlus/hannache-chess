@@ -1,30 +1,13 @@
-// mod module;
 
-// use module::whatever;
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
-
-use std::{collections::binary_heap, io, thread::current, vec};
+use std::io;
 
 type BitboardType = u64; //this is like putting th variable Bitboard as type u64, increases readability
 type AllPieces = Vec<BoardRepresentation>;
 
+//enums and structs----------
+
 #[derive(Clone, Copy, PartialEq, Eq)] //means i can clone it , copy it, check equality with soemthing else.
-enum PieceType { //can acess all of a certain piece, it's like a filter (my unified type)
+pub enum PieceType { //can acess all of a certain piece, it's like a filter (my unified type)
     //A piece can only be one of these few types
     //everything in here is calle a variant, use :: toa cess variant
     Pawn,
@@ -36,12 +19,22 @@ enum PieceType { //can acess all of a certain piece, it's like a filter (my unif
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ColorType { //can acess all White pieces at once, and code runs faster than if i have a string called White or Black in struct.
+pub enum ColorType { //can acess all White pieces at once, and code runs faster than if i have a string called White or Black in struct.
     White,
     Black
 }
 
-#[derive(Clone, Copy)] //can copy the värden, smt with owenership
+impl ColorType {
+    //like a method for just this enum
+    pub fn opposite(self) -> Self { //when you want to switch sides.
+        match self {
+            ColorType::White => ColorType::Black,
+            ColorType::Black => ColorType::White,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)] //can copy the värden, smt with owenership
 struct BoardRepresentation {  // a struct is a collection of data types
     piece: PieceType, //an index for which board it is
     color: ColorType, //I can use the enum types in the board representation
@@ -50,14 +43,16 @@ struct BoardRepresentation {  // a struct is a collection of data types
     //Ig you can use the same board for all the rooks
 }
 
-struct MergedBoards {
-    white_pos: BitboardType,
-    black_pos: BitboardType,
-    white_attack: BitboardType,
-    black_attack: BitboardType,
-    occupied: BitboardType,
-    not_occupied: BitboardType
-}
+// #[derive()]
+// struct MergedBoards {
+//     white_pos: BitboardType,
+//     black_pos: BitboardType,
+//     white_attack: BitboardType,
+//     black_attack: BitboardType,
+//     occupied: BitboardType,
+//     not_occupied: BitboardType
+// }
+
 //index for merged_boards
 pub const I_NOT_OCCUPIED:i32 = 5; 
 pub const I_OCCUPIED:i32 = 4; 
@@ -67,7 +62,7 @@ pub const I_WHITE_ATK:i32 = 1;
 pub const I_WHITE_POS:i32 = 0;
 
 #[derive(Clone)]
-pub struct Board {
+pub struct Board { // a way to keep the all_pieces, merged_boards and turn acessible in many functions
     pub all_pieces: AllPieces,
     pub merged_boards:Vec<BitboardType>,
     pub turn:ColorType,
@@ -78,14 +73,71 @@ impl Board { //in terms of python think of impl as where everything but the __in
         let all_pieces = initialize_pieces();
         let merged_boards = merging_boards(&all_pieces);
         
-        Self { //this is initializing self
+        let mut board = Self { //this is initializing self
             all_pieces,
             merged_boards,
             turn: ColorType::White,
+        };
+        board.recalculate_attacks(); //Gotta calculate the attakcs first because they are empty..
+        return board;
+    }
+
+    pub fn recalculate_attacks(&mut self) {
+        self.merged_boards = merging_boards(&self.all_pieces); //needs a new merged boards
+        for i in 0..self.all_pieces.len() {
+            let piece = self.all_pieces[i];
+            let atk = update_attack(&piece, &self.merged_boards);
+            self.all_pieces[i].attack = atk; //Now i have to make sure this isnt permantne change for when i am testing positions
         }
+        self.merged_boards = merging_boards(&self.all_pieces) //Now that i have updated them
+    }
+    
+    pub fn making_move(&mut self, start_coords:[u64; 2], to_coords:[u64; 2]) -> bool{ //if it didnt work -> false, if it worked -> true
+        let start_bitboard: BitboardType = input_coordinates(start_coords[0], start_coords[1]);
+        let to_bitboard: BitboardType = input_coordinates(to_coords[0], to_coords[1]);
+
+        if filter_noneplayable_squares(start_bitboard, self) == false {
+            return false;
+        }
+
+        let (_, current_piece_i) = identify_chosen_piece(self.clone(), start_bitboard);
+
+        let current_piece = self.all_pieces[current_piece_i];
+        let legal_moves:BitboardType = if current_piece.piece == PieceType::Pawn{//Because pawns move differently
+            pawn_legal_moves(&current_piece, &self.merged_boards)
+        } else {
+            current_piece.attack
+        };
+
+        if (legal_moves & to_bitboard) == 0b0 {
+            return false;
+        }
+
+        //finished the filter
+
+        //testing on cloned board to see checkmate -------------- WIP
+        let mut temp_board = self.clone();
+        temp_board.all_pieces
+
+        //if color isnt the same
+
+
+        //change the position
+        self.all_pieces[current_piece_i].position = moving_piece(self.all_pieces[current_piece_i].position.clone(), start_coords, to_coords);
+
+        //check for pawn upgrade
+        if board.all_pieces[current_piece_i].piece == PieceType::Pawn && (to_coords[1] == 0 || to_coords[1] == 7){
+            pawn_upgrades(board.all_pieces[current_piece_i]);
+        }
+
+        return true
     }
 }
 
+//-----------
+
+
+//Initializing pieces and merging and uhh pawn legal moves ---------
 
 fn initialize_pieces() -> Vec<BoardRepresentation>{ //piece, color, position, attack. returns a vector
     //Exaple of instance of this class
@@ -207,6 +259,49 @@ fn merging_boards(all_pieces: &Vec<BoardRepresentation>) -> Vec<BitboardType>{
     let mut merged_boards = vec![all_white_position, all_white_attack, all_black_position, all_black_attack, all_occupied, not_occupied];
     return merged_boards;
 }
+
+pub fn pawn_legal_moves(pawn:&BoardRepresentation, merged_boards:&Vec<u64>) -> BitboardType{
+    let up_wall:BitboardType = 0b11111111_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
+    let down_wall:BitboardType = 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_11111111;
+
+    let mut legal_moves:BitboardType = 0b0;
+    
+    for square in 0..64{
+        let mut piece_bitboard = 1u64<<square;
+        if piece_bitboard & pawn.position == 0b0{
+            continue;
+        }
+        let mut comerades = 0b0;
+        let mut enemies = 0b0;
+        if pawn.color == ColorType::White {
+            comerades = merged_boards[0];
+            enemies = merged_boards[2];
+        } else {
+            comerades = merged_boards[2];
+            enemies = merged_boards[0];
+        }
+        
+        if pawn.color == ColorType::White{
+            if piece_bitboard & up_wall == 0b0{
+                if piece_bitboard << 8 & comerades == 0 && piece_bitboard << 8 & enemies == 0 {
+                    legal_moves = legal_moves | piece_bitboard << 8;
+                } 
+            }
+        } else {
+            if piece_bitboard & down_wall == 0b0{
+                if piece_bitboard >> 8 & comerades == 0 && piece_bitboard >> 8 & enemies == 0 {
+                    legal_moves = legal_moves | piece_bitboard >> 8;
+                } 
+            }
+        }
+    }
+
+
+        return legal_moves
+}
+
+
+//-------
 
 fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
 
@@ -915,13 +1010,26 @@ fn test_bin_shifting(){
 
 }
 
+//Testing---
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+}
+
+
 //general plan:
 //have some functions:
 /* 
  - chose character
- - print_all_possile_moves
- - which character am i?
- - try making a move
+ - print_all_possile_moves and which character am i?
+ - try making a move <- this one will probably be the most logical and most code
 
  - is check?
  - is over?
