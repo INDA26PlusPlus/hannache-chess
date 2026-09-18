@@ -1,5 +1,5 @@
 
-use std::{future::pending, io};
+use std::io;
 
 type BitboardType = u64; //this is like putting th variable Bitboard as type u64, increases readability
 type AllPieces = Vec<BoardRepresentation>;
@@ -275,7 +275,7 @@ fn initialize_pieces() -> Vec<BoardRepresentation> {
 }
 
 
-fn merging_boards(all_pieces: &Vec<BoardRepresentation>) -> Vec<BitboardType>{
+pub fn merging_boards(all_pieces: &Vec<BoardRepresentation>) -> Vec<BitboardType>{
     let mut all_white_position:BitboardType = all_pieces[0].position;
     let mut all_white_attack:BitboardType = all_pieces[0].attack;
 
@@ -374,7 +374,7 @@ pub fn pawn_legal_moves(pawn:&BoardRepresentation, merged_boards:&Vec<u64>) -> B
         return legal_moves
 }
 
-fn remove_captured_piece(all_pieces: &mut Vec<BoardRepresentation>, color:ColorType, to_bitboard:BitboardType) {
+pub fn remove_captured_piece(all_pieces: &mut Vec<BoardRepresentation>, color:ColorType, to_bitboard:BitboardType) {
     let (start, end) = if color == ColorType::White { (6, 12) } else { (0, 6) };
     for i in start..end {
         all_pieces[i].position &= !to_bitboard //if you are overlapping with to_bitboards -> gone
@@ -399,7 +399,7 @@ pub fn single_piece_moves(piece:&BoardRepresentation, start_bitboard:BitboardTyp
     }
 }
 
-fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
+pub fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
 
     loop {
         // println!("hi");
@@ -490,7 +490,7 @@ fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
     }
 }
 
-fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType { //inputs coordinates and makes bitboard.
+pub fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType { //inputs coordinates and makes bitboard.
     let bitboard_index: BitboardType = (row+1) * 8 - (column+1); // this is so that origo is at bottom left 
     //now row and column are "dead"?
     1u64<<bitboard_index
@@ -498,14 +498,14 @@ fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType { 
     //-> type points at what output looks like    // let mut column: String = String::new();    // io::stdin().read_line(&mut column).expect("Failed to read");    //rather than taking in inputs take in parameters instead.
 }
 
-fn moving_piece(initial_board:BitboardType, old_coords:[u64; 2], new_coords:[u64; 2]) -> BitboardType{ //changes the bitboard so that it has the new and removes old pos
+pub fn moving_piece(initial_board:BitboardType, old_coords:[u64; 2], new_coords:[u64; 2]) -> BitboardType{ //changes the bitboard so that it has the new and removes old pos
     let old_boards = 1u64 << ((old_coords[1]+1)*8 - (old_coords[0]+1));
     let new_boards = 1u64 << ((new_coords[1]+1)*8 - (new_coords[0]+1));
     let new_board: BitboardType = (initial_board& !old_boards)|new_boards; //get rid of old and add the new
     return new_board;
 }
 
-fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> BitboardType{ //takes in one chosen type and the merged boards then returns the new attack_board
+pub fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> BitboardType{ //takes in one chosen type and the merged boards then returns the new attack_board
     //updates one piece at a time
     let left_wall:BitboardType = 0b00000001_00000001_00000001_00000001_00000001_00000001_00000001_00000001; //gotta think hard. precomputing
     let right_wall:BitboardType = 0b10000000_10000000_10000000_10000000_10000000_10000000_10000000_10000000;
@@ -687,7 +687,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
 
             ];
             for square in 0..64{
-                let mut piece_bitboard = 1u64<<square;
+                let piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
@@ -715,7 +715,7 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
         PieceType::King => {
             //up down side and side check all walls
             
-            let mut piece_bitboard = chosen.position;
+            let piece_bitboard = chosen.position;
             //<1, >1, <8, >8, <7, >7, <9, >9
             //up left, up, up right, right, right down, down, down left, left
             let order = [
@@ -741,12 +741,12 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
     }
 }
 
-fn pawn_upgrades(pawn:&mut BoardRepresentation){
+pub fn pawn_upgrades(pawn:&mut BoardRepresentation){
     //change the struct, take away one pawn and add one of the piece you chose
     pawn.piece = PieceType::Queen;
 }
 
-fn is_own_piece(chosen_bitboard:BitboardType, board: &Board) -> bool{ //check if youo have chosen a piece of your own color
+pub fn is_own_piece(chosen_bitboard:BitboardType, board: &Board) -> bool{ //check if youo have chosen a piece of your own color
     if chosen_bitboard & board.merged_boards[I_NOT_OCCUPIED] != 0 {
         //nothing is there. You can't chose it
         return false;
@@ -764,13 +764,13 @@ fn is_own_piece(chosen_bitboard:BitboardType, board: &Board) -> bool{ //check if
     }
 }
 
-fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:BitboardType, board:&Board) -> bool{
+pub fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:BitboardType, board:&Board) -> bool{
     if !is_own_piece(start_bitboard, board) {
         return false;
     }
 
     let (_, current_piece_i) = identify_chosen_piece(board, start_bitboard);
-    let current_piece = board.all_pieces[current_piece_i];
+    // let current_piece = board.all_pieces[current_piece_i];
 
     let legal_moves = single_piece_moves(&board.all_pieces[current_piece_i], start_bitboard, &board.merged_boards);
 
@@ -786,7 +786,7 @@ fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:Bitboard
     return true //if it passed filter then return true
 }
 
-fn identify_chosen_piece(board:&Board, chosen_bitboard:BitboardType) -> (u64, usize){
+pub fn identify_chosen_piece(board:&Board, chosen_bitboard:BitboardType) -> (u64, usize){
     let mut initial_board:u64 = 0; 
     let mut current_piece_i:usize = 0;
     if board.turn == ColorType::White{
@@ -883,79 +883,101 @@ fn play_game() {
 
 
 #[test]
-fn hexa_to_bin() {
-    let file_a: u64 = 0x0101_0101_0101_0101;
-    let file_b: u64 = 0x0202_0202_0202_0202;
-    let file_g: u64 = 0x4040_4040_4040_4040;
-    let file_h: u64 = 0x8080_8080_8080_8080;
-    println!("{:b}", file_a);
-    println!("{:b}", file_b);
-    println!("{:b}", file_g);
-    println!("{:b}", file_h);
-}
-
-#[test]
-fn testiing_bin_subtraction() {
-    let x: BitboardType= 0b000111;
-    let y:BitboardType = 0b000101;
-    let k: u64 = 5; //can subtract int from bin
-    let z = x-y;//can subtract bin and bin
-    let l = x-k;
-    println!("{:b}",z);
-    println!("{:b}", l);
-
-}
-
-#[test]
-fn mai() {//if its main i can't run it T^T
-    let white_pieces: BitboardType = 0b11111111_11111111_00000000_00000000_00000000_00000000_00000000_00000000; //Underscore is same as without udnerscore it just makes it more readable
-    //white_pieces[row*8 + column]
-    println!("Hii");
-    println!("{:b}", white_pieces) //:b prints it out in binary, defult is decimals
-}
-
-#[test]
-fn test_trim() {
-  // create some strings
-  let string1 = " Welcome to Edpresso    ";
-  let string2 = "Educative is the best!  \n   ";
-  let string3 = "     Rust is very interesting!";
-
-  // trim the strings
-  let trim1 = string1.trim();
-  let trim2 = string2.trim();
-  let trim3 = string3.trim();
-
-  // print the trims
-  println!("The string before trim is '{}' and length is {}", string1, string1.len());
-  println!("The string when trimmed is '{}' and length is {}", trim1, trim1.len());
-
-  println!("\nThe string before trim is '{}' and length is {}", string2, string2.len());
-  println!("The string when trimmed is '{}' and length is {}", trim2, trim2.len());
-
-  println!("\nThe string before trim is '{}' and length is {}", string3, string3.len());
-  println!("The string when trimmed is '{}' and length is {}", trim3, trim3.len());
-
+fn a1_has_white_piece() {
+    let board = Board::new();
+    let a1 = input_coordinates(0, 0);
+    assert!(a1 & board.merged_boards[I_WHITE_POS] != 0) //will panic if not true i think
 }
 
 
-#[test]
-fn test_bin_shifting(){
-    let column = 0;
-    let row = 3;
+//if i have time later i can try implementing this maybe after i finish catsling.... ans en passant...
+// #[test]
+// perft(board, depth):
+//     if depth == 0: return 1 /* lövnod */
+//     nodes = 0
+//     for move in gen_moves(board):
+//         nodes = nodes + perft(move.new_board, depth - 1)
+//     return nodes
 
-    let position = row*8 + column;
+// #[test]
+// fn failing_assert() {
+//     assert!(false)
+// }
 
-    println!("{:}", 0b000100); //in decimal form
-    println!("{:b}", 0b000100); //in binary form
-    let a:u64 = 0b11;
-    let b:u64 = 0b10011000; //this is the same as doing 00000011 ^ 11111100
-    let mut c:u64 = a & b;
-    let d:u64 = &c<<10;
-    println!("{:b}", c);
-    println!("{:b}", d);
+// #[test]
+// fn hexa_to_bin() {
+//     let file_a: u64 = 0x0101_0101_0101_0101;
+//     let file_b: u64 = 0x0202_0202_0202_0202;
+//     let file_g: u64 = 0x4040_4040_4040_4040;
+//     let file_h: u64 = 0x8080_8080_8080_8080;
+//     println!("{:b}", file_a);
+//     println!("{:b}", file_b);
+//     println!("{:b}", file_g);
+//     println!("{:b}", file_h);
+// }
 
-}
+// #[test]
+// fn testiing_bin_subtraction() {
+//     let x: BitboardType= 0b000111;
+//     let y:BitboardType = 0b000101;
+//     let k: u64 = 5; //can subtract int from bin
+//     let z = x-y;//can subtract bin and bin
+//     let l = x-k;
+//     println!("{:b}",z);
+//     println!("{:b}", l);
+
+// }
+
+// #[test]
+// fn mai() {//if its main i can't run it T^T
+//     let white_pieces: BitboardType = 0b11111111_11111111_00000000_00000000_00000000_00000000_00000000_00000000; //Underscore is same as without udnerscore it just makes it more readable
+//     //white_pieces[row*8 + column]
+//     println!("Hii");
+//     println!("{:b}", white_pieces) //:b prints it out in binary, defult is decimals
+// }
+
+// #[test]
+// fn test_trim() {
+//   // create some strings
+//   let string1 = " Welcome to Edpresso    ";
+//   let string2 = "Educative is the best!  \n   ";
+//   let string3 = "     Rust is very interesting!";
+
+//   // trim the strings
+//   let trim1 = string1.trim();
+//   let trim2 = string2.trim();
+//   let trim3 = string3.trim();
+
+//   // print the trims
+//   println!("The string before trim is '{}' and length is {}", string1, string1.len());
+//   println!("The string when trimmed is '{}' and length is {}", trim1, trim1.len());
+
+//   println!("\nThe string before trim is '{}' and length is {}", string2, string2.len());
+//   println!("The string when trimmed is '{}' and length is {}", trim2, trim2.len());
+
+//   println!("\nThe string before trim is '{}' and length is {}", string3, string3.len());
+//   println!("The string when trimmed is '{}' and length is {}", trim3, trim3.len());
+
+// }
+
+
+// #[test]
+// fn test_bin_shifting(){
+//     let column = 0;
+//     let row = 3;
+
+//     // let position = row*8 + column;
+
+//     println!("{:}", 0b000100); //in decimal form
+//     println!("{:b}", 0b000100); //in binary form
+//     let a:u64 = 0b11;
+//     let b:u64 = 0b10011000; //this is the same as doing 00000011 ^ 11111100
+//     let c:u64 = a & b;
+//     let d:u64 = &c<<10;
+//     println!("{:b}", c);
+//     println!("{:b}", d);
+
+// }
 
 //Testing---
 // #[cfg(test)]
