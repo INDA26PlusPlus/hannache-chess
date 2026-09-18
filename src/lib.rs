@@ -1,5 +1,5 @@
 
-use std::io;
+use std::{future::pending, io};
 
 type BitboardType = u64; //this is like putting th variable Bitboard as type u64, increases readability
 type AllPieces = Vec<BoardRepresentation>;
@@ -15,13 +15,13 @@ pub enum PieceType { //can acess all of a certain piece, it's like a filter (my 
     Knight,
     Rook,
     Queen,
-    King
+    King,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ColorType { //can acess all White pieces at once, and code runs faster than if i have a string called White or Black in struct.
     White,
-    Black
+    Black,
 }
 
 impl ColorType {
@@ -35,7 +35,7 @@ impl ColorType {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)] //can copy the värden, smt with owenership
-struct BoardRepresentation {  // a struct is a collection of data types
+pub struct BoardRepresentation {  // a struct is a collection of data types
     piece: PieceType, //an index for which board it is
     color: ColorType, //I can use the enum types in the board representation
     position: BitboardType,//how about one board for position and one for all the attacked spots
@@ -43,23 +43,13 @@ struct BoardRepresentation {  // a struct is a collection of data types
     //Ig you can use the same board for all the rooks
 }
 
-// #[derive()]
-// struct MergedBoards {
-//     white_pos: BitboardType,
-//     black_pos: BitboardType,
-//     white_attack: BitboardType,
-//     black_attack: BitboardType,
-//     occupied: BitboardType,
-//     not_occupied: BitboardType
-// }
-
 //index for merged_boards
-pub const I_NOT_OCCUPIED:i32 = 5; 
-pub const I_OCCUPIED:i32 = 4; 
-pub const I_BLACK_ATK:i32 = 3; 
-pub const I_BLACK_POS:i32 = 2; 
-pub const I_WHITE_ATK:i32 = 1; 
-pub const I_WHITE_POS:i32 = 0;
+pub const I_WHITE_POS:usize = 0;
+pub const I_WHITE_ATK:usize = 1; 
+pub const I_BLACK_POS:usize = 2; 
+pub const I_BLACK_ATK:usize = 3; 
+pub const I_OCCUPIED:usize = 4; 
+pub const I_NOT_OCCUPIED:usize = 5; 
 
 #[derive(Clone)]
 pub struct Board { // a way to keep the all_pieces, merged_boards and turn acessible in many functions
@@ -91,221 +81,328 @@ impl Board { //in terms of python think of impl as where everything but the __in
         }
         self.merged_boards = merging_boards(&self.all_pieces) //Now that i have updated them
     }
+
+    pub fn checking_check(&self) -> bool {
+        let king_index = if self.turn == ColorType::White {5} else {11};
+        let enemy_attack = if self.turn == ColorType::White {
+            self.merged_boards[I_BLACK_ATK]
+        } else {
+            self.merged_boards[I_WHITE_ATK]
+        };
+        self.all_pieces[king_index].position & enemy_attack != 0 //True if in check
+    }
+
+    pub fn has_legal_move(&self) -> bool {
+        //simulating on a cloned board: trying every move
+        //if theres no legal moves + check -> checkmate
+        let (start, end) = if self.turn == ColorType::White{(0, 6)} else {(6, 12)};
+
+        for i in start..end { //for each piece
+            let piece = self.all_pieces[i];
+            if piece.position == 0 {
+                continue; //theres no more of this type
+            }
+
+            for from_sq in 0..64 { //check each square
+                let from_bit = 1u64 << from_sq;
+                if piece.position & from_bit == 0 {
+                    continue;
+                }
+
+                let targets = single_piece_moves(&piece, from_bit, &self.merged_boards);
+
+                for to_sq in 0..64 {
+                    let to_bit = 1u64 << to_sq;
+                    if targets & to_bit == 0 {
+                        continue;
+                    }
+                    
+                    let mut temp = self.clone();
+                    temp.all_pieces[i].position = (temp.all_pieces[i].position & !from_bit) | to_bit;
+                    //everything thats not in from bit and add to bit
+                    temp.recalculate_attacks();
+
+                    if !temp.checking_check() {
+                        return true; //you can end up in not check
+                    }
+                }
+
+            }
+        }
+        return false;
+    }
+
+    pub fn is_checkmate(&self) -> bool {
+        self.checking_check() && !self.has_legal_move() //its in check and can't move
+    }
+
+    pub fn is_stalemate(&self) -> bool {
+        !self.checking_check() && !self.has_legal_move() //not in check but has no moves
+    }
     
     pub fn making_move(&mut self, start_coords:[u64; 2], to_coords:[u64; 2]) -> bool{ //if it didnt work -> false, if it worked -> true
         let start_bitboard: BitboardType = input_coordinates(start_coords[0], start_coords[1]);
         let to_bitboard: BitboardType = input_coordinates(to_coords[0], to_coords[1]);
 
-        if filter_noneplayable_squares(start_bitboard, self) == false {
+        
+        if !filter_noneplayable_squares(start_bitboard, to_bitboard, self) {
             return false;
         }
-
-        let (_, current_piece_i) = identify_chosen_piece(self.clone(), start_bitboard);
-
-        let current_piece = self.all_pieces[current_piece_i];
-        let legal_moves:BitboardType = if current_piece.piece == PieceType::Pawn{//Because pawns move differently
-            pawn_legal_moves(&current_piece, &self.merged_boards)
-        } else {
-            current_piece.attack
-        };
-
-        if (legal_moves & to_bitboard) == 0b0 {
-            return false;
-        }
-
-        //finished the filter
+        
+        let (_, current_piece_i) = identify_chosen_piece(&self, start_bitboard);
+        
 
         //testing on cloned board to see checkmate -------------- WIP
-        let mut temp_board = self.clone();
-        temp_board.all_pieces
+        let mut temp_board = self.clone(); //now this has all the traits of board but when i modify it it isnt borad.
 
-        //if color isnt the same
+        //do the move on the temp board
+        temp_board.all_pieces[current_piece_i].position = moving_piece(temp_board.all_pieces[current_piece_i].position, start_coords, to_coords);
+
+        remove_captured_piece(&mut temp_board.all_pieces, self.turn, to_bitboard);
+
+        
+        temp_board.recalculate_attacks();
 
 
-        //change the position
-        self.all_pieces[current_piece_i].position = moving_piece(self.all_pieces[current_piece_i].position.clone(), start_coords, to_coords);
+        if temp_board.checking_check() {
+            return false; //if you leave king in check not good
+        }
+
+        //committing to the move! //means you dont put your king in danger.
+        self.all_pieces = temp_board.all_pieces; 
+        self.merged_boards = temp_board.merged_boards;
+        
 
         //check for pawn upgrade
-        if board.all_pieces[current_piece_i].piece == PieceType::Pawn && (to_coords[1] == 0 || to_coords[1] == 7){
-            pawn_upgrades(board.all_pieces[current_piece_i]);
+        if self.all_pieces[current_piece_i].piece == PieceType::Pawn && (to_coords[1] == 0 || to_coords[1] == 7){ //if its at either wall
+            pawn_upgrades(&mut self.all_pieces[current_piece_i]);
+            self.recalculate_attacks();
+        }
+
+        self.turn = self.turn.opposite();
+
+        if self.is_checkmate() {
+            println!("Checkmate!")
+        } else if self.is_stalemate() {
+            println!("Stalemate!")
         }
 
         return true
     }
 }
 
-//-----------
-
-
 //Initializing pieces and merging and uhh pawn legal moves ---------
 
-fn initialize_pieces() -> Vec<BoardRepresentation>{ //piece, color, position, attack. returns a vector
-    //Exaple of instance of this class
-    let mut white_pawn = BoardRepresentation{
+fn initialize_pieces() -> Vec<BoardRepresentation> {
+    let black_pawn = BoardRepresentation {
         piece: PieceType::Pawn,
-        color: ColorType::White,
+        color: ColorType::Black,
         position: 0b00000000_11111111_00000000_00000000_00000000_00000000_00000000_00000000,
-        attack: 0b00000000_00000000_11111111_00000000_00000000_00000000_00000000_00000000,
+        attack: 0,
     };
-
-    let mut white_bishop = BoardRepresentation{ //ok so like i dont want to change piece nd color
+    let black_bishop = BoardRepresentation {
         piece: PieceType::Bishop,
-        color: ColorType::White,
+        color: ColorType::Black,
         position: 0b00100100_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+        attack: 0,
     };
-
-    let mut white_knight = BoardRepresentation{
+    let black_knight = BoardRepresentation {
+        piece: PieceType::Knight,
+        color: ColorType::Black,
+        position: 0b01000010_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+        attack: 0,
+    };
+    let black_rook = BoardRepresentation {
+        piece: PieceType::Rook,
+        color: ColorType::Black,
+        position: 0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+        attack: 0,
+    };
+    let black_queen = BoardRepresentation {
+        piece: PieceType::Queen,
+        color: ColorType::Black,
+        position: 0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+        attack: 0,
+    };
+    let black_king = BoardRepresentation {
+        piece: PieceType::King,
+        color: ColorType::Black,
+        position: 0b00001000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
+        attack: 0,
+    };
+ 
+    let white_pawn = BoardRepresentation {
+        piece: PieceType::Pawn,
+        color: ColorType::White,
+        position: 0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000,
+        attack: 0,
+    };
+    let white_bishop = BoardRepresentation {
+        piece: PieceType::Bishop,
+        color: ColorType::White,
+        position: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100,
+        attack: 0,
+    };
+    let white_knight = BoardRepresentation {
         piece: PieceType::Knight,
         color: ColorType::White,
-        position: 0b01000010_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-    };
-    ////Heres the line PLAN FOR TMR: Fix these functions down here by chanching positition and attack and make the black ones too
-    let mut white_rook = BoardRepresentation{
-        piece: PieceType::Rook,
-        position: 0b10000001_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        color: ColorType::White
-    }; 
-
-    let mut white_queen = BoardRepresentation{
-        piece: PieceType::Queen,
-        position: 0b00010000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        color: ColorType::White
-    } ;
-
-    let mut white_king = BoardRepresentation{
-        piece: PieceType::King,
-        position: 0b00001000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        color: ColorType::White
-    } ;
-
-    //To black
-
-    let mut black_pawn = BoardRepresentation{
-        piece: PieceType::Pawn,
-        color: ColorType::Black,
-        position: 0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_00000000,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_11111111_00000000_00000000,
-    };
-
-    let mut black_bishop = BoardRepresentation{ //ok so like i dont want to change piece nd color
-        piece: PieceType::Bishop,
-        color: ColorType::Black,
-        position: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00100100,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-    };
-
-    let mut black_knight = BoardRepresentation{
-        piece: PieceType::Knight,
-        color: ColorType::Black,
         position: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_01000010,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-    } ;
-
-    let mut black_rook = BoardRepresentation{
+        attack: 0,
+    };
+    let white_rook = BoardRepresentation {
         piece: PieceType::Rook,
+        color: ColorType::White,
         position: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_10000001,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        color: ColorType::Black
-    } ;
-
-    let mut black_queen = BoardRepresentation{
+        attack: 0,
+    };
+    let white_queen = BoardRepresentation {
         piece: PieceType::Queen,
+        color: ColorType::White,
         position: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00010000,
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        color: ColorType::Black
-    } ;
-
-    let mut black_king = BoardRepresentation{
+        attack: 0,
+    };
+    let white_king = BoardRepresentation {
         piece: PieceType::King,
-        position: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001000, //queen meet queen and king meet king
-        attack: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00000000,
-        color: ColorType::Black
-    } ;
-    let chess_vector = vec![white_pawn, white_bishop, white_knight, white_rook, white_queen, white_king, black_pawn, black_bishop, black_knight, black_rook, black_queen, black_king];
-    return chess_vector;
-    //Returns array with all the pieces
+        color: ColorType::White,
+        position: 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_00001000,
+        attack: 0,
+    };
+ 
+    vec![
+        white_pawn, white_bishop, white_knight, white_rook, white_queen, white_king,
+        black_pawn, black_bishop, black_knight, black_rook, black_queen, black_king,
+    ]
 }
+
 
 fn merging_boards(all_pieces: &Vec<BoardRepresentation>) -> Vec<BitboardType>{
     let mut all_white_position:BitboardType = all_pieces[0].position;
-    for i in 1..6 {
-        all_white_position = all_white_position|all_pieces[i].position;
-    }
-
     let mut all_white_attack:BitboardType = all_pieces[0].attack;
-    for i in 1..6 {
+
+    for i in 0..6 {
+        all_white_position = all_white_position|all_pieces[i].position;
         all_white_attack = all_white_attack|all_pieces[i].attack;
     }
 
-
     let mut all_black_position:BitboardType = all_pieces[6].position;
+    let mut all_black_attack:BitboardType = all_pieces[6].attack;
+
     for i in 6..12{
         all_black_position = all_black_position|all_pieces[i].position;
-    }
-
-    let mut all_black_attack:BitboardType = all_pieces[6].attack;
-    for i in 6..12{
         all_black_attack = all_black_attack|all_pieces[i].attack;
     }
     
-    let mut all_occupied:BitboardType = all_black_position|all_white_position;
-    let mut not_occupied:BitboardType = !all_occupied; //Not occupied.
+    let all_occupied:BitboardType = all_black_position|all_white_position;
+    let not_occupied:BitboardType = !all_occupied; //Not occupied.
 
-    let mut merged_boards = vec![all_white_position, all_white_attack, all_black_position, all_black_attack, all_occupied, not_occupied];
-    return merged_boards;
+    vec![
+        all_white_position, 
+        all_white_attack, 
+        all_black_position, 
+        all_black_attack, 
+        all_occupied, 
+        not_occupied
+    ]
 }
 
+
+
 pub fn pawn_legal_moves(pawn:&BoardRepresentation, merged_boards:&Vec<u64>) -> BitboardType{
-    let up_wall:BitboardType = 0b11111111_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
-    let down_wall:BitboardType = 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_11111111;
 
-    let mut legal_moves:BitboardType = 0b0;
-    
-    for square in 0..64{
-        let mut piece_bitboard = 1u64<<square;
-        if piece_bitboard & pawn.position == 0b0{
-            continue;
+    let mut legal_moves:BitboardType = 0;
+    let occupied = merged_boards[I_OCCUPIED];
+    let enemies = if pawn.color == ColorType::White {
+        merged_boards[I_BLACK_POS]
+    } else {
+        merged_boards[I_WHITE_POS]
+    };
+
+    let (start_row, forward): (usize, i32) = if pawn.color == ColorType::White {
+        (1, 8)
+    } else {
+        (6, -8)
+    }; //if you are on the start row on not
+
+    for square in 0..64 {
+        let piece_bitboard = 1u64 << square;
+        if piece_bitboard & pawn.position == 0 {
+            continue; // if its not pawn
         }
-        let mut comerades = 0b0;
-        let mut enemies = 0b0;
-        if pawn.color == ColorType::White {
-            comerades = merged_boards[0];
-            enemies = merged_boards[2];
-        } else {
-            comerades = merged_boards[2];
-            enemies = merged_boards[0];
-        }
+
+        let row = square/8;
+        // let col = (square%8) as i32; //converts the type
         
-        if pawn.color == ColorType::White{
-            if piece_bitboard & up_wall == 0b0{
-                if piece_bitboard << 8 & comerades == 0 && piece_bitboard << 8 & enemies == 0 {
-                    legal_moves = legal_moves | piece_bitboard << 8;
-                } 
+        //take one step forward
+        let one_step_sq = square as i32 + forward; //so the index of the square in front
+        if one_step_sq < 64 && one_step_sq >= 0 {
+            let one_step_bitboard = 1u64 << one_step_sq;
+            if one_step_bitboard & occupied != 0 { //if you go to an occupied square
+                continue;
             }
-        } else {
-            if piece_bitboard & down_wall == 0b0{
-                if piece_bitboard >> 8 & comerades == 0 && piece_bitboard >> 8 & enemies == 0 {
-                    legal_moves = legal_moves | piece_bitboard >> 8;
-                } 
+            legal_moves = legal_moves | one_step_bitboard;
+
+            //either take one step or two
+            if row == start_row {
+                //you can take two steps.
+                let two_steps_sq: i32 = one_step_sq + forward;
+                let two_steps_bitboard = 1u64 << two_steps_sq; //pushes to the index of it
+                if two_steps_bitboard & occupied != 0{ // there is something there
+                    continue;
+                }
+                legal_moves = legal_moves | two_steps_bitboard;
+            }
+
+            if (square+1)%8 != 0 {
+                let right_bitboard = one_step_bitboard>> 1;
+                if right_bitboard & enemies != 0 {
+                    legal_moves |= right_bitboard
+                }
+            }
+            if (square)%8 != 0 {
+                let left_bitboard = one_step_bitboard << 1;
+                if left_bitboard & enemies != 0 {
+                    legal_moves |= left_bitboard
+                }
             }
         }
+        //diagonal captures
+        //if you can capture then you can move
+        
+        
     }
-
 
         return legal_moves
 }
 
+fn remove_captured_piece(all_pieces: &mut Vec<BoardRepresentation>, color:ColorType, to_bitboard:BitboardType) {
+    let (start, end) = if color == ColorType::White { (6, 12) } else { (0, 6) };
+    for i in start..end {
+        all_pieces[i].position &= !to_bitboard //if you are overlapping with to_bitboards -> gone
+    }
+}
 
-//-------
+//returns the attack_bitboard of a single piece
+pub fn single_piece_moves(piece:&BoardRepresentation, start_bitboard:BitboardType, merged_boards:&Vec<u64>) -> BitboardType {
+
+    //because rn theres only BoardRepresentation of whole sets of pieces.
+    let single_piece = BoardRepresentation{
+        piece: piece.piece,
+        color: piece.color, 
+        position: start_bitboard,
+        attack: 0,
+    };
+
+    if single_piece.piece == PieceType::Pawn{
+        pawn_legal_moves(&single_piece, merged_boards) //
+    } else {
+        update_attack(&single_piece, merged_boards)
+    }
+}
 
 fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
 
     loop {
+        // println!("hi");
     //such as h5, taking the input
     let mut input: String = String::new();
     io::stdin().read_line(&mut input).expect("Failed");
@@ -396,12 +493,9 @@ fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
 fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType { //inputs coordinates and makes bitboard.
     let bitboard_index: BitboardType = (row+1) * 8 - (column+1); // this is so that origo is at bottom left 
     //now row and column are "dead"?
-    let bitboard_chosen: BitboardType = 0b1<<bitboard_index;
+    1u64<<bitboard_index
 
-    return bitboard_chosen; //-> type points at what output looks like
-    // let mut column: String = String::new();
-    // io::stdin().read_line(&mut column).expect("Failed to read");
-    //rather than taking in inputs take in parameters instead.
+    //-> type points at what output looks like    // let mut column: String = String::new();    // io::stdin().read_line(&mut column).expect("Failed to read");    //rather than taking in inputs take in parameters instead.
 }
 
 fn moving_piece(initial_board:BitboardType, old_coords:[u64; 2], new_coords:[u64; 2]) -> BitboardType{ //changes the bitboard so that it has the new and removes old pos
@@ -414,38 +508,32 @@ fn moving_piece(initial_board:BitboardType, old_coords:[u64; 2], new_coords:[u64
 fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> BitboardType{ //takes in one chosen type and the merged boards then returns the new attack_board
     //updates one piece at a time
     let left_wall:BitboardType = 0b00000001_00000001_00000001_00000001_00000001_00000001_00000001_00000001; //gotta think hard. precomputing
-    let right_wall:BitboardType = 0b00000001_10000000_10000000_10000000_10000000_10000000_10000000_10000000;
+    let right_wall:BitboardType = 0b10000000_10000000_10000000_10000000_10000000_10000000_10000000_10000000;
     let up_wall:BitboardType = 0b11111111_00000000_00000000_00000000_00000000_00000000_00000000_00000000;
     let down_wall:BitboardType = 0b00000000_00000000_00000000_00000000_00000000_00000000_00000000_11111111;
 
-    let mut comerades = 0b0;
-    let mut enemies = 0b0;
-    if chosen.color == ColorType::White {
-        comerades = merged_boards[0];
-        enemies = merged_boards[2];
-    } else {
-        comerades = merged_boards[2];
-        enemies = merged_boards[0];
-    }
+    let comerades = if chosen.color == ColorType::White{merged_boards[I_WHITE_POS]} else {merged_boards[I_BLACK_POS]};
+    let enemies = if chosen.color == ColorType::White{merged_boards[I_BLACK_POS]} else {merged_boards[I_WHITE_POS]};
 
-    let mut new_attack_board:BitboardType = 0b0;
+    let mut new_attack_board:BitboardType = 0;
 
     match chosen.piece{
         PieceType::Pawn => {
+            // forward = if chosen.color == ColorType::White {8} else {-8};
+            // square_i = chosen as i32; 
             if chosen.color == ColorType::White {
-
                 // chosen.position 
                 for square in 0..64{
-                    let mut piece_bitboard = 1u64<<square;
+                    let piece_bitboard = 1u64<<square;
                     if piece_bitboard & chosen.position == 0b0{
                         continue;
                     }
                 
-                    if square%8 != 0 {
-                        new_attack_board = new_attack_board | (piece_bitboard<<9);
-                    }
-                    if (square+1)%8 != 0{
+                    if square%8 != 0 { //not on left side (A)
                         new_attack_board = new_attack_board | (piece_bitboard<<7);
+                    }
+                    if (square+1)%8 != 0{ // not on right side (H)
+                        new_attack_board = new_attack_board | (piece_bitboard<<9); //moves right
                     }
                     new_attack_board = new_attack_board & !comerades; //everything thats on comerades gets erased.
                 
@@ -454,20 +542,20 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                     }
             } else {
                 for square in 0..64{
-                    let mut piece_bitboard = 1u64<<square;
+                    let piece_bitboard = 1u64<<square;
                     if piece_bitboard & chosen.position == 0b0{
                         continue;
                     }
                     if square%8 != 0 {
-                        new_attack_board = new_attack_board | (piece_bitboard>>7);
+                        new_attack_board = new_attack_board | (piece_bitboard>>9);
                     }
                     if (square+1)%8 != 0{
-                        new_attack_board = new_attack_board | (piece_bitboard>>9);
+                        new_attack_board = new_attack_board | (piece_bitboard>>7);
                     }
                     new_attack_board = new_attack_board & !comerades;   
                 }
             }
-            return new_attack_board;
+            return new_attack_board & !comerades; //i never check if i walk into comerades or not. Dont want to be able to attack comerades.
         }
 
         PieceType::Bishop => {
@@ -475,35 +563,37 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             let order:[(i32, bool, u64); 4] = [
                 (7, true, left_wall|up_wall),
                 (9, true, right_wall|up_wall),
-                (7, false, left_wall|down_wall),
-                (9, false, right_wall|down_wall)
+                (7, false, right_wall|down_wall),
+                (9, false, left_wall|down_wall)
             ];
 
             for square in 0..64{
-                let mut piece_bitboard = 1u64<<square;
+                let piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
 
-                for (steps, is_left, wall) in order{
-                    for i in 0..7{
-                        if piece_bitboard & wall != 0b0{
+                for (step, is_left, wall) in order {
+                    if piece_bitboard & wall != 0b0 {
+                        continue //crash into the wall
+                    }
+
+                    for i in 1..8{
+                        let check_pos = if is_left {piece_bitboard << step*i} else {piece_bitboard >> step*i};
+                        
+                        if check_pos & comerades != 0 {
                             break
                         }
 
-                        piece_bitboard = if is_left {piece_bitboard << steps} else {piece_bitboard >> steps};
-                        if piece_bitboard & comerades != 0b0 {
+                        new_attack_board = new_attack_board | check_pos;
+
+                        if check_pos & wall != 0 || check_pos & enemies != 0 {
                             break
                         }
-                        if piece_bitboard & enemies != 0b0{
-                            new_attack_board = new_attack_board | piece_bitboard;
-                            break
-                        }
-                        new_attack_board = new_attack_board | piece_bitboard;
                     }
                 }
             }
-            return new_attack_board
+            return new_attack_board;
         }
 
         PieceType::Knight => {
@@ -512,116 +602,36 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             //doesnt matetr if its comerade or enemy
             //but check where you're going if theres comerade there. enemy doesnt matter at the palce you're landing
             
-            // <<10, >>6, >>10, <<6, >>17, >>15, <<17, <<15
+            // let row_78:u64 = 0b11111111_11111111_00000000_00000000_00000000_00000000_00000000_00000000;
+            // let row_12:u64 = 0b00000000_00000000_00000000_00000000_00000000_00000000_11111111_11111111;
+
+            let col_gh:u64 = 0b11000000_11000000_11000000_11000000_11000000_11000000_11000000_11000000;
+            let col_ab:u64 = 0b00000011_00000011_00000011_00000011_00000011_00000011_00000011_00000011;
 
             for square in 0..64 {
-                let mut piece_bitboard = 1u64<<square;
+                let piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
-            
-                
-
-                let mut step = 0;
-                //right right
-                // for i in 1..=2{
-                loop {
-                    if step == 2{ // x x x. 
-                        //checck wall up and wall down
-                        if piece_bitboard & up_wall == 0b0{
-                            //can go up
-                            new_attack_board = new_attack_board | (piece_bitboard<<8)
-                        }
-                        if piece_bitboard & down_wall == 0b0{
-                            //can go down
-                            new_attack_board = new_attack_board | (piece_bitboard>>8)
-                        }
-                    }
-                    if piece_bitboard & right_wall != 0b0 { //if zero or first step is on the wall
-                        break;
-                    }
-                    piece_bitboard = piece_bitboard >> 1; //moving to the right by one step
-                    step += 1;
-
+                let row = square/8; //0 -> 7
+                if piece_bitboard & left_wall == 0 {
+                    if row >= 2 {new_attack_board |= piece_bitboard >> 17;}
+                    if row <= 5 {new_attack_board |= piece_bitboard << 15;}
                 }
-                //check wall
-                for square in 0..64{
-                let mut piece_bitboard = 1u64<<square;
-                if piece_bitboard & chosen.position == 0b0{
-                    continue;
+                if piece_bitboard & col_ab == 0 {
+                    if row <= 6 {new_attack_board |= piece_bitboard << 6;}
+                    if row >= 1 {new_attack_board |= piece_bitboard >> 10;} 
                 }
-                
-
-                step = 0;
-                //left left
-                // >>1
-                loop {
-                    if step == 2{ // x x x. 
-                        //checck wall up and wall down
-                        if piece_bitboard & up_wall == 0b0{
-                            //can go up
-                            new_attack_board = new_attack_board | (piece_bitboard<<8)
-                        }
-                        if piece_bitboard & down_wall == 0b0{
-                            //can go down
-                            new_attack_board = new_attack_board | (piece_bitboard>>8)
-                        }
-                    }
-                    if piece_bitboard & left_wall != 0b0 { //if zero or first step is on the wall
-                        break;
-                    }
-                    piece_bitboard = piece_bitboard << 1; //moving to the left by one step
-                    step += 1;
-
+                if piece_bitboard & right_wall == 0 {
+                    if row <= 5 {new_attack_board |= piece_bitboard << 17;}
+                    if row >= 2 {new_attack_board |= piece_bitboard >> 15;}
                 }
-
-                step = 0;
-                // up up
-                // << 8
-                loop {
-                    if step == 2{ // x x x. 
-                        //checck wall up and wall down
-                        if piece_bitboard & right_wall == 0b0{
-                            //can go up
-                            new_attack_board = new_attack_board | (piece_bitboard<<1)
-                        }
-                        if piece_bitboard & left_wall == 0b0{
-                            //can go down
-                            new_attack_board = new_attack_board | (piece_bitboard>>1)
-                        }
-                    }
-                    if piece_bitboard & up_wall != 0b0 { //if zero or first step is on the wall
-                        break;
-                    }
-                    piece_bitboard = piece_bitboard << 8; //moving to the up by one step
-                    step += 1;
-
+                if piece_bitboard & col_gh == 0 {
+                    if row <= 6 {new_attack_board |= piece_bitboard << 10;}
+                    if row >= 1 {new_attack_board |= piece_bitboard >> 6;}
                 }
-
-                step = 0;
-                // down down
-                // << 8
-                loop {
-                    if step == 2{ // x x x. 
-                        //checck wall up and wall down
-                        if piece_bitboard & right_wall == 0b0{
-                            //can go up
-                            new_attack_board = new_attack_board | (piece_bitboard<<1)
-                        }
-                        if piece_bitboard & left_wall == 0b0{
-                            //can go down
-                            new_attack_board = new_attack_board | (piece_bitboard>>1)
-                        }
-                    }
-                    if piece_bitboard & down_wall != 0b0 { //if zero or first step is on the wall
-                        break;
-                    }
-                    piece_bitboard = piece_bitboard >> 8; //moving to the up by one step
-                    step += 1;
-                }
-            }}
-
-            return new_attack_board
+            }
+            return new_attack_board & !comerades;
             }
 
         PieceType::Rook => {
@@ -633,33 +643,32 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             ];
             //step, förminskar/is_left, wall
             for square in 0..64{
-                let mut piece_bitboard = 1u64<<square;
+                let piece_bitboard = 1u64<<square;
                 if piece_bitboard & chosen.position == 0b0{
                     continue;
                 }
 
                 for (step, is_left, wall) in order {
-                    for i in 0..7{
-                        if piece_bitboard & wall != 0b0 {
-                            continue //crash into the wall
-                        }
-                        piece_bitboard = if is_left {piece_bitboard << step} else {piece_bitboard >> step};
-                        if piece_bitboard & comerades != 0b0 {
-                            break
-                        }
-                        if piece_bitboard & enemies != 0b0{
-                            new_attack_board = new_attack_board | piece_bitboard;
-                            break
-                        }
-                        new_attack_board = new_attack_board | piece_bitboard;
+                    if piece_bitboard & wall != 0b0 {
+                        continue //crash into the wall
                     }
 
+                    for i in 1..8{
+                        let check_pos = if is_left {piece_bitboard << step*i} else {piece_bitboard >> step*i};
+                        
+                        if check_pos & comerades != 0 {
+                            break
+                        }
+
+                        new_attack_board = new_attack_board | check_pos;
+
+                        if check_pos & wall != 0 || check_pos & enemies != 0 {
+                            break
+                        }
                     }
                 }
+            }
             return new_attack_board;
-            //up down side to side
-            //check all walls
-
         }
 
         PieceType::Queen => {
@@ -673,8 +682,8 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                 //bishop:
                 (7, true, left_wall|up_wall),
                 (9, true, right_wall|up_wall),
-                (7, false, left_wall|down_wall),
-                (9, false, right_wall|down_wall)
+                (7, false, right_wall|down_wall),
+                (9, false, left_wall|down_wall)
 
             ];
             for square in 0..64{
@@ -684,23 +693,22 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                 }
 
                 for (step, is_left, wall) in order {
-                    for i in 0..7{
-                        if piece_bitboard & wall != 0b0 {
-                            continue //crash into the wall
-                        }
-                        piece_bitboard = if is_left {piece_bitboard << step} else {piece_bitboard >> step};
-                        if piece_bitboard & comerades != 0b0 {
-                            break
-                        }
-                        if piece_bitboard & enemies != 0b0{
-                            new_attack_board = new_attack_board | piece_bitboard;
-                            break
-                        }
-                        new_attack_board = new_attack_board | piece_bitboard;
+                    if piece_bitboard & wall != 0b0 {
+                        continue 
                     }
 
+                    for i in 1..8{
+                        let check_pos = if is_left {piece_bitboard << step*i} else {piece_bitboard >> step*i};
+                        if check_pos & comerades != 0 {
+                            break
+                        }
+                        new_attack_board = new_attack_board | check_pos;
+                        if check_pos & wall != 0 || check_pos & enemies != 0 {
+                            break
+                        }
                     }
                 }
+            }
             return new_attack_board;
         }
         
@@ -711,13 +719,13 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
             //<1, >1, <8, >8, <7, >7, <9, >9
             //up left, up, up right, right, right down, down, down left, left
             let order = [
-                (7, true, up_wall&left_wall),
+                (7, true, up_wall|left_wall),
                 (8, true, up_wall),
-                (9, true, up_wall&right_wall),
+                (9, true, up_wall|right_wall),
                 (1, true, right_wall),
-                (7, false, down_wall&right_wall), //minskar
+                (7, false, down_wall|right_wall), //minskar
                 (8, false, down_wall),
-                (9, false, down_wall&left_wall),
+                (9, false, down_wall|left_wall),
                 (1, false, left_wall)
             ];
             for (step, is_left, wall) in order{
@@ -726,72 +734,59 @@ fn update_attack(chosen:&BoardRepresentation,merged_boards:&Vec<u64>) -> Bitboar
                     new_attack_board = if is_left {new_attack_board | piece_bitboard<<step} else {new_attack_board | piece_bitboard>>step};
                 }
             }
-            return new_attack_board
+
+            return new_attack_board & !comerades
         }
-            //Make a board with all the possible moves then & it with !wall
+        //Make a board with all the possible moves then & it with !wall
     }
 }
 
-fn pawn_upgrades(current:BoardRepresentation){
+fn pawn_upgrades(pawn:&mut BoardRepresentation){
     //change the struct, take away one pawn and add one of the piece you chose
+    pawn.piece = PieceType::Queen;
 }
 
-fn checking_check(attack_board:BitboardType, king:BoardRepresentation){
-    //if any of the merged attacks overlap with king
-    if attack_board & king.position != 0b0 {
-
-    }
-}
-
-fn check_checkmate(){
-    //this should be like checking new board
-
-}
-
-fn check_stalemate(){
-
-}
-
-fn check_pawn_upgrades(){
-    //honestly enough to check those who have moved
-}
-
-fn print_board(bitboard:BitboardType) {
-    println!("*-------------------*");
-    for row in (0..8).rev(){
-        print!("{} | ", row+1);
-        for column in 0..8{
-            let square = row*8+column;
-            let thing_there = (bitboard >> square) & 0b1;
-            if thing_there != 0{
-                print!("1 ");
-            } else {
-                print!(". ");
-            }
-        }
-        println!("|");
-    }
-    println!("*-------------------*")
-}
-
-fn filter_noneplayable_squares(start_bitboard:BitboardType, board:&Board) -> bool{
-    if start_bitboard&board.merged_boards[4] != 0b0{
-        //position is not occupied
+fn is_own_piece(chosen_bitboard:BitboardType, board: &Board) -> bool{ //check if youo have chosen a piece of your own color
+    if chosen_bitboard & board.merged_boards[I_NOT_OCCUPIED] != 0 {
+        //nothing is there. You can't chose it
         return false;
     }
-    if board.turn == ColorType::White{ //I'm sorry this is burning my eyes.
-        if board.merged_boards[0] & start_bitboard == 0b0{ //you chose a black piece
-            return false;
-        }        
-    } else { //its blacks turn
-        if board.merged_boards[2] & start_bitboard == 0b0{ //You chose white piece
-            return false;
-        } 
+    if board.turn == ColorType::White {
+        //you want to chose a white pos
+        if chosen_bitboard & board.merged_boards[I_WHITE_POS] != 0 {
+            return true
+        }
+        return false
+        //you chose a white pos
+    } else {
+        chosen_bitboard & board.merged_boards[I_BLACK_POS] != 0 
+        //returns true if you chose a piece of your own color
+    }
+}
+
+fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:BitboardType, board:&Board) -> bool{
+    if !is_own_piece(start_bitboard, board) {
+        return false;
+    }
+
+    let (_, current_piece_i) = identify_chosen_piece(board, start_bitboard);
+    let current_piece = board.all_pieces[current_piece_i];
+
+    let legal_moves = single_piece_moves(&board.all_pieces[current_piece_i], start_bitboard, &board.merged_boards);
+
+    // let legal_moves:BitboardType = if current_piece.piece == PieceType::Pawn{//Because pawns move differently
+    //     pawn_legal_moves(&current_piece, &board.merged_boards)
+    // } else {
+    //     current_piece.attack
+    // };
+
+    if legal_moves & to_bitboard == 0b0 {
+        return false;
     }
     return true //if it passed filter then return true
 }
 
-fn identify_chosen_piece(board:Board, chosen_bitboard:BitboardType) -> (u64, usize){
+fn identify_chosen_piece(board:&Board, chosen_bitboard:BitboardType) -> (u64, usize){
     let mut initial_board:u64 = 0; 
     let mut current_piece_i:usize = 0;
     if board.turn == ColorType::White{
@@ -802,7 +797,7 @@ fn identify_chosen_piece(board:Board, chosen_bitboard:BitboardType) -> (u64, usi
                 initial_board = board.all_pieces[i].position;
                 break;
             }
-    }} else{
+    }} else {
         for i in 6..12 { //now this has to become something otherwise its unsafe
             if chosen_bitboard&board.all_pieces[i].position != 0b0{
                 //you found it!
@@ -816,136 +811,88 @@ fn identify_chosen_piece(board:Board, chosen_bitboard:BitboardType) -> (u64, usi
 
 }
 
-fn temporary_check_charckmate(all_pieces: &Vec<BoardRepresentation>, 
-    initial_board:BitboardType, 
-    start_coords:[u64; 2], to_coords:[u64; 2],){
-    
+
+pub fn print_possible_moves(board: &Board, chosen_bitboard:BitboardType) {
+    //Chosen bitboards
+    let (_, current_i) = identify_chosen_piece(board, chosen_bitboard);
+    let piece = board.all_pieces[current_i];
+    let moves = single_piece_moves(&piece, chosen_bitboard, &board.merged_boards);
+    print_board(moves);
+
 }
 
-fn print_possible_moves(){}
-//all_pieces is public somehow
-fn print_piece_position(piece:PieceType){}
 
-fn all(column: u64, row: u64, checking: Vec<BoardRepresentation>){
-        
-    //initializes all the pieces and merged boards and intializes the position of each merged 
-    // let all_pieces = initialize_pieces(); //within this generate the new attack board
-    // let merged_boards: Vec<u64> = merging_boards(&all_pieces);
-    // let turn = ColorType::White;
-    let board = Board::new();
+pub fn print_board(bitboard:BitboardType) {
+    println!("*-------------------*");
+    for row in (0..8).rev(){
+        print!("{} | ", row+1);
+        for column in (0..8).rev(){
+            let square = row*8+column;
+            let thing_there = (bitboard >> square) & 0b1;
+            if thing_there != 0{
+                print!("1 ");
+            } else {
+                print!(". ");
+            }
+        }
+        println!("|");
+    }
+    println!("*-------------------*");
+    println!("    a b c d e f g h  ");
+}
+
+
+#[test]
+fn play_game() {
+    let mut board = Board::new();
 
     loop {
+        print_board(board.merged_boards[I_OCCUPIED]);
+
+        println!("It's {}'s turn to move, enter coordinates: ", if board.turn == ColorType::White {"white"} else {"black"});
+
+        //taking start input:
         let start_coords = taking_input();
-        let to_coords = taking_input();
+        let start_bitboard = input_coordinates(start_coords[0], start_coords[1]);
 
-
-        //---choosing character---
-        //creates a bitboard of the input coordiantes -- kinda like chosing character.
-        let start_bitboard: BitboardType = input_coordinates(start_coords[0], start_coords[1]);
-        let to_bitboard: BitboardType = input_coordinates(to_coords[0], to_coords[1]);
-
-
-        //FILTER: if you chose nothing or chose wrong color or to somewhere you can't go then stop.
-        if filter_noneplayable_squares(start_bitboard, &board) == false {
+        // println!("hii");
+        // println!("{:b}", start_bitboard);
+        // println!("{}", is_own_piece(start_bitboard, &board));
+        if is_own_piece(start_bitboard, &board) == false{
+            println!("This isnt your piece, try again");
             continue
         }
-        //TO DO: If you chose a spot where you can't go filter away too 
-        //just pawn has a seperate can_walk_to, others can_walk_to = attack.
 
-        //-----------------------
+        print_possible_moves(&board, start_bitboard);
 
+        print_board(board.merged_boards[I_WHITE_POS]|board.merged_boards[I_BLACK_POS]);
 
+        //taking to input:
+        println!("Where do you want to move: ");
+        let to_coords = taking_input();
+        // let to_bitboard = input_coordinates(to_coords[0], to_coords[1]);
 
-        //Who am i---------------------
-        let (initial_board, current_piece_i) = identify_chosen_piece(board.clone(), start_bitboard);
-        //------------------------//
-
-        //check for pawn upgrades. should check at end of moving honestly
-        if board.all_pieces[current_piece_i].piece == PieceType::Pawn && (to_coords[1] == 0 || to_coords[1] == 7){
-            pawn_upgrades(board.all_pieces[current_piece_i]);
+        if board.making_move(start_coords, to_coords) {
+            println!("move made")
+        } else {
+            println!("Illegal move, try again")
         }
-
-        //----------trying to move---------------------------------####
-
-        //-------temporarily move it to check checkmate----------
-
-        let mut temp_current: BoardRepresentation = BoardRepresentation{
-            piece: (board.all_pieces[current_piece_i].piece),
-            color: board.all_pieces[current_piece_i].color,
-            position: moving_piece(initial_board, start_coords, to_coords),
-            attack: 0b0
-        };
-        //recompute all the attack pos both white and black. except the piece i am right now current_piece_i ----
-
-        //create a list for all the pieces i will be going through
-        let mut update_attack_list:Vec<BoardRepresentation> = Vec::with_capacity(6);
-        if board.turn == ColorType::White{
-            for i in 0..6 {
-                if board.all_pieces[i].piece != temp_current.piece {
-                    update_attack_list[i] = board.all_pieces[i];
-                    continue
-                }
-                update_attack_list[i] = temp_current
-            }
-        }
+        // filter_noneplayable_squares(start_bitboard, to_bitboard, &board)
+    }
+}
 
 
-        let mut temp_merged_boards = board.merged_boards.clone(); //I hope this copies the merged boards
-        
-        //merge the piecess positions (ex, white_merged_pos)
-        let mut temporary_new_merged:BitboardType = 0b0;
-        
-        //adds all
-        for i in 0..6{
-            if i == current_piece_i{
-                temporary_new_merged = temporary_new_merged | temp_current.position;
-                continue;
-            }
-            temporary_new_merged = temporary_new_merged | board.all_pieces[i].position;
-        }
-        temp_merged_boards[0] = temporary_new_merged; //the white_pos position
-
-        temporary_new_merged = 0b0;
-        for i in 6..12 { 
-            if i == current_piece_i{
-                temporary_new_merged = temporary_new_merged | temp_current.position;
-                continue
-            }
-            temporary_new_merged = temporary_new_merged | board.all_pieces[i].position;
-            }
-        //update the attack for all the positions. 
-        
-
-
-        //check if it leads to check or not for yourself.
-        //if check dont allow -> try again
-        //if not check -> continue
-
-        //------------
-        //Trying to move________________________
-
-        //I'm so confused what is this doing?
-        let mut theres_a_piece:bool = false;
-        for i in 0..12 {
-            if &start_bitboard&checking[i].position != 0b0 { //
-                let mut chosen =  BoardRepresentation{
-                    position: start_bitboard,
-                    piece: checking[i].piece,
-                    color: checking[i].color,
-                    attack: 0b0
-                };
-                theres_a_piece = true;
-                break;
-            }
-        }
-        //else: theres no piece on the spot you've chosen.
-        // if made_a_struct == false {
-        //     //you havent made a struct
-
-
-    //     }
-}}
-
+#[test]
+fn hexa_to_bin() {
+    let file_a: u64 = 0x0101_0101_0101_0101;
+    let file_b: u64 = 0x0202_0202_0202_0202;
+    let file_g: u64 = 0x4040_4040_4040_4040;
+    let file_h: u64 = 0x8080_8080_8080_8080;
+    println!("{:b}", file_a);
+    println!("{:b}", file_b);
+    println!("{:b}", file_g);
+    println!("{:b}", file_h);
+}
 
 #[test]
 fn testiing_bin_subtraction() {
@@ -1011,17 +958,17 @@ fn test_bin_shifting(){
 }
 
 //Testing---
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    #[test]
-    fn it_works() {
+//     #[test]
+//     fn it_works() {
 
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+//         let result = add(2, 2);
+//         assert_eq!(result, 4);
+//     }
+// }
 
 
 //general plan:
