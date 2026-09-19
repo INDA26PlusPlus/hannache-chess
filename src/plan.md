@@ -72,3 +72,9 @@ give up: you give up press a button typ
 
 make a checkmate function?
 check outside the board
+
+
+
+PLAN FOR NEXT SESSION (2026-09-15):
+bit is not an iteratable. in update attack i shift with bit x << bit which wont be good.
+plan is that i update each piece indivudually  (check all) and when i get ot the piece i jsut moved i put in a "temporary struct" instead of the real thing to see if it will work. But it will have like he characteristics of the struct in some way. 

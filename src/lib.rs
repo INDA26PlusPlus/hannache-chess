@@ -43,6 +43,31 @@ pub struct BoardRepresentation {  // a struct is a collection of data types
     //Ig you can use the same board for all the rooks
 }
 
+#[derive(Clone)]
+pub struct HasCastled {
+    w_right_rook: bool,
+    w_left_rook: bool,
+    w_king: bool,
+    b_right_rook: bool,
+    b_left_rook: bool,
+    b_king: bool,
+}
+
+impl HasCastled {
+    pub fn new() -> Self {
+        let instance = HasCastled{ 
+            w_right_rook: false, 
+            w_left_rook:false, 
+            w_king:false, 
+            b_right_rook:false, 
+            b_left_rook:false, 
+            b_king:false};
+        return instance
+    }
+}
+
+//if w_right_rook and w_king can castle
+
 //index for merged_boards
 pub const I_WHITE_POS:usize = 0;
 pub const I_WHITE_ATK:usize = 1; 
@@ -92,7 +117,7 @@ impl Board { //in terms of python think of impl as where everything but the __in
         self.all_pieces[king_index].position & enemy_attack != 0 //True if in check
     }
 
-    pub fn has_legal_move(&self) -> bool {
+    pub fn has_legal_move(&self, has_castled:&mut HasCastled) -> bool {
         //simulating on a cloned board: trying every move
         //if theres no legal moves + check -> checkmate
         let (start, end) = if self.turn == ColorType::White{(0, 6)} else {(6, 12)};
@@ -105,16 +130,16 @@ impl Board { //in terms of python think of impl as where everything but the __in
 
             for from_sq in 0..64 { //check each square
                 let from_bit = 1u64 << from_sq;
-                if piece.position & from_bit == 0 {
+                if piece.position & from_bit == 0 { // see if theres one of those pieces there
                     continue;
                 }
 
-                let targets = single_piece_moves(&piece, from_bit, &self.merged_boards);
+                let targets = single_piece_moves(&piece, from_bit, &self.merged_boards, has_castled);
 
-                for to_sq in 0..64 {
+                for to_sq in 0..64 { //
                     let to_bit = 1u64 << to_sq;
                     if targets & to_bit == 0 {
-                        continue;
+                        continue; //you can't move there
                     }
                     
                     let mut temp = self.clone();
@@ -126,40 +151,88 @@ impl Board { //in terms of python think of impl as where everything but the __in
                         return true; //you can end up in not check
                     }
                 }
-
             }
         }
         return false;
     }
 
-    pub fn is_checkmate(&self) -> bool {
-        self.checking_check() && !self.has_legal_move() //its in check and can't move
+    pub fn is_checkmate(&self, has_castled:&mut HasCastled) -> bool {
+        self.checking_check() && !self.has_legal_move(has_castled) //its in check and can't move
     }
 
-    pub fn is_stalemate(&self) -> bool {
-        !self.checking_check() && !self.has_legal_move() //not in check but has no moves
+    pub fn is_stalemate(&self, has_castled:&mut HasCastled) -> bool {
+        !self.checking_check() && !self.has_legal_move(has_castled) //not in check but has no moves
     }
     
-    pub fn making_move(&mut self, start_coords:[u64; 2], to_coords:[u64; 2]) -> bool{ //if it didnt work -> false, if it worked -> true
+    pub fn making_move(&mut self, start_coords:[u64; 2], to_coords:[u64; 2], has_castled:&mut HasCastled) -> bool{ //if it didnt work -> false, if it worked -> true
         let start_bitboard: BitboardType = input_coordinates(start_coords[0], start_coords[1]);
         let to_bitboard: BitboardType = input_coordinates(to_coords[0], to_coords[1]);
 
-        
-        if !filter_noneplayable_squares(start_bitboard, to_bitboard, self) {
-            return false;
-        }
-        
         let (_, current_piece_i) = identify_chosen_piece(&self, start_bitboard);
         
+        // let saved_castled_state = has_castled.clone();
 
-        //testing on cloned board to see checkmate -------------- WIP
+        // let (_, to_piece_i) = identify_chosen_piece(&self, to_bitboard);
+
+        if !filter_noneplayable_squares(start_bitboard, to_bitboard, self, has_castled) {
+            // has_castled.w_king = saved_castled_state.w_king;
+            // has_castled.b_king = saved_castled_state.b_king;
+            // has_castled.b_right_rook = saved_castled_state.b_right_rook;
+            // has_castled.b_left_rook = saved_castled_state.b_left_rook;
+            // has_castled.w_left_rook = saved_castled_state.w_left_rook;
+            // has_castled.w_right_rook = saved_castled_state.w_right_rook; //I dont know how to do this faster...
+            
+            return false;
+        }
+
         let mut temp_board = self.clone(); //now this has all the traits of board but when i modify it it isnt borad.
+        
+        let mut has_castled_now = false;
+        // 
 
-        //do the move on the temp board
-        temp_board.all_pieces[current_piece_i].position = moving_piece(temp_board.all_pieces[current_piece_i].position, start_coords, to_coords);
+        if temp_board.all_pieces[current_piece_i].piece == PieceType::King {
+            let w_r_rook = 0b1;
+            let w_l_rook = 0b1<<7;
+            let b_r_rook = 0b1<<56;
+            let b_l_rook = 0b1 << 63;
+            
+            //if to_bitboard is rightrook -> right rook goes to 5 or 61
+            //  AND  king moves to 6 or 62
+            //if to_butboard is leftrook -> left rook goes to 3 or 59
+            //  and king moves to 58
+            //and make it so that king is true.
+            if self.turn == ColorType::White {
+                if to_bitboard & w_l_rook != 0 {
+                    //went to the right one meaning you can go to the right one.
+                    //move king and move rook
+                    //moving the rook
+                    temp_board.all_pieces[3].position = moving_piece(temp_board.all_pieces[3].position, [0, 0], [3,0]);
+                    temp_board.all_pieces[5].position = input_coordinates(2, 0);
+                    has_castled_now = true
+                }
+                if to_bitboard & w_r_rook != 0 {
+                    temp_board.all_pieces[3].position = moving_piece(temp_board.all_pieces[3].position, [7, 0], [5, 0]);
+                    temp_board.all_pieces[5].position = input_coordinates(6, 0);
+                    has_castled_now = true
+                }
+            } else {
+                if to_bitboard & b_l_rook != 0 {
+                    temp_board.all_pieces[9].position = moving_piece(temp_board.all_pieces[9].position, [0, 7], [3, 7]);
+                    temp_board.all_pieces[11].position = input_coordinates(2, 7);
+                    has_castled_now = true;
+                }
+                if to_bitboard & b_r_rook != 0 {
+                    temp_board.all_pieces[9].position = moving_piece(temp_board.all_pieces[9].position, [7, 7], [5, 7]);
+                    temp_board.all_pieces[11].position = input_coordinates(6, 7);
+                    has_castled_now = true;
+                }
 
-        remove_captured_piece(&mut temp_board.all_pieces, self.turn, to_bitboard);
-
+            }
+        }
+        if !has_castled_now {
+            temp_board.all_pieces[current_piece_i].position = moving_piece(temp_board.all_pieces[current_piece_i].position, start_coords, to_coords);
+            remove_captured_piece(&mut temp_board.all_pieces, self.turn, to_bitboard);
+        }
         
         temp_board.recalculate_attacks();
 
@@ -169,9 +242,35 @@ impl Board { //in terms of python think of impl as where everything but the __in
         }
 
         //committing to the move! //means you dont put your king in danger.
+        if has_castled_now ||temp_board.all_pieces[current_piece_i].piece == PieceType::King {
+            if self.turn == ColorType::White {
+                has_castled.w_king = true;
+            }
+            else {
+                has_castled.b_king = true;
+            }
+        }
+
+        //if you ever move the rook tis loses its castling rights
+        if temp_board.all_pieces[current_piece_i].piece == PieceType::Rook {
+            if self.turn == ColorType::White {
+                if start_bitboard == input_coordinates(0, 0) { //if you are the left rook
+                    has_castled.w_left_rook = true
+                } else {
+                    has_castled.w_left_rook = true
+                }
+            } else {
+                if start_bitboard == input_coordinates(0, 7) {
+                    has_castled.b_left_rook = true
+                } else {
+                    has_castled.b_right_rook = true
+                }
+            }
+        }
+
         self.all_pieces = temp_board.all_pieces; 
         self.merged_boards = temp_board.merged_boards;
-        
+
 
         //check for pawn upgrade
         if self.all_pieces[current_piece_i].piece == PieceType::Pawn && (to_coords[1] == 0 || to_coords[1] == 7){ //if its at either wall
@@ -181,9 +280,9 @@ impl Board { //in terms of python think of impl as where everything but the __in
 
         self.turn = self.turn.opposite();
 
-        if self.is_checkmate() {
+        if self.is_checkmate(has_castled) {
             println!("Checkmate!")
-        } else if self.is_stalemate() {
+        } else if self.is_stalemate(has_castled) {
             println!("Stalemate!")
         }
 
@@ -274,7 +373,6 @@ fn initialize_pieces() -> Vec<BoardRepresentation> {
     ]
 }
 
-
 pub fn merging_boards(all_pieces: &Vec<BoardRepresentation>) -> Vec<BitboardType>{
     let mut all_white_position:BitboardType = all_pieces[0].position;
     let mut all_white_attack:BitboardType = all_pieces[0].attack;
@@ -305,7 +403,12 @@ pub fn merging_boards(all_pieces: &Vec<BoardRepresentation>) -> Vec<BitboardType
     ]
 }
 
+// pub fn castling(board: &Board) {
+//     let order = if board.turn == ColorType::White {(board.all_pieces[4], board.all_pieces[6])} else {(board.all_pieces[9], board.all_pieces[11])};
 
+//     //if white i'm checking the white rook and king, if black i am checking the black rook and king
+// }
+//none of them have moved
 
 pub fn pawn_legal_moves(pawn:&BoardRepresentation, merged_boards:&Vec<u64>) -> BitboardType{
 
@@ -372,130 +475,6 @@ pub fn pawn_legal_moves(pawn:&BoardRepresentation, merged_boards:&Vec<u64>) -> B
     }
 
         return legal_moves
-}
-
-pub fn remove_captured_piece(all_pieces: &mut Vec<BoardRepresentation>, color:ColorType, to_bitboard:BitboardType) {
-    let (start, end) = if color == ColorType::White { (6, 12) } else { (0, 6) };
-    for i in start..end {
-        all_pieces[i].position &= !to_bitboard //if you are overlapping with to_bitboards -> gone
-    }
-}
-
-//returns the attack_bitboard of a single piece
-pub fn single_piece_moves(piece:&BoardRepresentation, start_bitboard:BitboardType, merged_boards:&Vec<u64>) -> BitboardType {
-
-    //because rn theres only BoardRepresentation of whole sets of pieces.
-    let single_piece = BoardRepresentation{
-        piece: piece.piece,
-        color: piece.color, 
-        position: start_bitboard,
-        attack: 0,
-    };
-
-    if single_piece.piece == PieceType::Pawn{
-        pawn_legal_moves(&single_piece, merged_boards) //
-    } else {
-        update_attack(&single_piece, merged_boards)
-    }
-}
-
-pub fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
-
-    loop {
-        // println!("hi");
-    //such as h5, taking the input
-    let mut input: String = String::new();
-    io::stdin().read_line(&mut input).expect("Failed");
-
-    let mut input = input.trim().chars();
-    // let a = &input;
-    if input.clone().count() != 2{ //this uses a clone of input rather than actual input so eats up input.clone()
-        //try again
-        continue
-    }
-    
-    let allowed_a = "abcdefgh";
-    let allowed_b = "12345678";
-
-    let a = input.next();
-    let b = input.next();
-    let mut coords: [u64; 2] = [0, 0]; //this is an array, always size 2
-
-    if let (Some(x), Some(y)) = (a, b) { //Unwrapping
-        if !allowed_a.contains(x) || !allowed_b.contains(y) {
-            continue
-        } else {
-            match x {
-                'a' => {
-                    coords[0] = 0
-                }
-                'b' => {
-                    coords[0] = 1
-                }
-                'c' => {
-                    coords[0] = 2
-                }
-                'd' => {
-                    coords[0] = 3
-                }
-                'e' => {
-                    coords[0] = 4
-                }
-                'f' => {
-                    coords[0] = 5
-                }
-                'g' => {
-                    coords[0] = 6
-                }
-                'h' => {
-                    coords[0] = 7
-                }
-                _ => {
-                    unreachable!()
-                }
-            }
-            match y {
-                '1' => {
-                    coords[1] = 0
-                }
-                '2' => {
-                    coords[1] = 1
-                }
-                '3' => {
-                    coords[1] = 2
-                }
-                '4' => {
-                    coords[1] = 3
-                }
-                '5' => {
-                    coords[1] = 4
-                }
-                '6' => {
-                    coords[1] = 5
-                }
-                '7' => {
-                    coords[1] = 6
-                }
-                '8' => {
-                    coords[1] = 7
-                }
-                _ => {
-                    unreachable!()
-                }
-            }
-        }
-    } else{continue}
-
-    return coords;
-    }
-}
-
-pub fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType { //inputs coordinates and makes bitboard.
-    let bitboard_index: BitboardType = (row+1) * 8 - (column+1); // this is so that origo is at bottom left 
-    //now row and column are "dead"?
-    1u64<<bitboard_index
-
-    //-> type points at what output looks like    // let mut column: String = String::new();    // io::stdin().read_line(&mut column).expect("Failed to read");    //rather than taking in inputs take in parameters instead.
 }
 
 pub fn moving_piece(initial_board:BitboardType, old_coords:[u64; 2], new_coords:[u64; 2]) -> BitboardType{ //changes the bitboard so that it has the new and removes old pos
@@ -746,6 +725,173 @@ pub fn pawn_upgrades(pawn:&mut BoardRepresentation){
     pawn.piece = PieceType::Queen;
 }
 
+pub fn remove_captured_piece(all_pieces: &mut Vec<BoardRepresentation>, color:ColorType, to_bitboard:BitboardType) {
+    let (start, end) = if color == ColorType::White { (6, 12) } else { (0, 6) };
+    for i in start..end {
+        all_pieces[i].position &= !to_bitboard //if you are overlapping with to_bitboards -> gone
+    }
+}
+
+//returns the attack_bitboard of a single piece
+pub fn single_piece_moves(piece:&BoardRepresentation, start_bitboard:BitboardType, merged_boards:&Vec<u64>, has_castled:&mut HasCastled) -> BitboardType {
+
+    //because rn theres only BoardRepresentation of whole sets of pieces.
+    let single_piece = BoardRepresentation{
+        piece: piece.piece,
+        color: piece.color, 
+        position: start_bitboard,
+        attack: 0,
+    };
+
+    let mut attack_board = if single_piece.piece == PieceType::Pawn { pawn_legal_moves(&single_piece, merged_boards)
+    } else {
+        update_attack(&single_piece, merged_boards)
+    };
+
+    if single_piece.piece == PieceType::King || single_piece.piece == PieceType::Rook {
+        attack_board |= castling(piece, merged_boards, has_castled);
+    }
+    attack_board
+}
+
+fn castling(piece:&BoardRepresentation, merged_boards:&Vec<u64>, has_castled:&HasCastled) -> BitboardType {
+        //can only castle by choosing king.
+        if piece.color == ColorType::White && has_castled.w_king == true { return 0 }
+        if piece.color == ColorType::Black && has_castled.b_king == true { return 0 }
+        //filters away the cases where king has already castled
+
+        let mut return_board:BitboardType = 0;
+
+        if piece.piece == PieceType::King {
+            //it could be both left and right. I'm just returning an attack board here.
+            if piece.color == ColorType::White {
+                // let (stepsr, slotsr, castledr, stepsl, slotsl, castledl) = (5, 0b11, has_castled.w_right_rook, 1, 0b111, has_castled.w_left_rook);
+                //checking right side
+                //has the white right rook castled AND is the steps betwen then & merged_boards[OCCUPIED_I] == 0b0 (dvs not occupied)
+                if has_castled.w_right_rook == false && merged_boards[I_OCCUPIED] & 0b11 << 1 == 0 {
+                    return_board |= input_coordinates(7, 0);
+                } 
+                if has_castled.w_left_rook == false && merged_boards[I_OCCUPIED] & 0b111 << 4 == 0 {
+                    return_board |= input_coordinates(0, 0);
+                }
+            }
+            if piece.color == ColorType::Black {
+                if has_castled.b_right_rook == false && merged_boards[I_OCCUPIED] & 0b11 << 57 == 0 {
+                    return_board |= input_coordinates(7, 7);
+                }
+                if has_castled.b_left_rook == false && merged_boards[I_OCCUPIED] & 0b111 << 60 == 0 {
+                    return_board |= input_coordinates(0, 7);
+                }
+            }
+            //If its occupied.... IF WHITE IF BLACK,IF RIGHT OR LEFT
+        }
+        return return_board;
+
+
+    }
+    
+        
+
+pub fn taking_input() -> [u64; 2] { //takes in like h5 returns (x, y) coordinates
+
+    loop {
+        // println!("hi");
+    //such as h5, taking the input
+    let mut input: String = String::new();
+    io::stdin().read_line(&mut input).expect("Failed");
+
+    let mut input = input.trim().chars();
+    // let a = &input;
+    if input.clone().count() != 2{ //this uses a clone of input rather than actual input so eats up input.clone()
+        //try again
+        continue
+    }
+    
+    let allowed_a = "abcdefgh";
+    let allowed_b = "12345678";
+
+    let a = input.next();
+    let b = input.next();
+    let mut coords: [u64; 2] = [0, 0]; //this is an array, always size 2
+
+    if let (Some(x), Some(y)) = (a, b) { //Unwrapping
+        if !allowed_a.contains(x) || !allowed_b.contains(y) {
+            continue
+        } else {
+            match x {
+                'a' => {
+                    coords[0] = 0
+                }
+                'b' => {
+                    coords[0] = 1
+                }
+                'c' => {
+                    coords[0] = 2
+                }
+                'd' => {
+                    coords[0] = 3
+                }
+                'e' => {
+                    coords[0] = 4
+                }
+                'f' => {
+                    coords[0] = 5
+                }
+                'g' => {
+                    coords[0] = 6
+                }
+                'h' => {
+                    coords[0] = 7
+                }
+                _ => {
+                    unreachable!()
+                }
+            }
+            match y {
+                '1' => {
+                    coords[1] = 0
+                }
+                '2' => {
+                    coords[1] = 1
+                }
+                '3' => {
+                    coords[1] = 2
+                }
+                '4' => {
+                    coords[1] = 3
+                }
+                '5' => {
+                    coords[1] = 4
+                }
+                '6' => {
+                    coords[1] = 5
+                }
+                '7' => {
+                    coords[1] = 6
+                }
+                '8' => {
+                    coords[1] = 7
+                }
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+    } else{continue}
+
+    return coords;
+    }
+}
+
+pub fn input_coordinates(column: BitboardType, row: BitboardType) -> BitboardType { //inputs coordinates and makes bitboard.
+    let bitboard_index: BitboardType = (row+1) * 8 - (column+1); // this is so that origo is at bottom left 
+    //now row and column are "dead"?
+    1u64<<bitboard_index
+
+    //-> type points at what output looks like    // let mut column: String = String::new();    // io::stdin().read_line(&mut column).expect("Failed to read");    //rather than taking in inputs take in parameters instead.
+}
+
+
 pub fn is_own_piece(chosen_bitboard:BitboardType, board: &Board) -> bool{ //check if youo have chosen a piece of your own color
     if chosen_bitboard & board.merged_boards[I_NOT_OCCUPIED] != 0 {
         //nothing is there. You can't chose it
@@ -764,7 +910,7 @@ pub fn is_own_piece(chosen_bitboard:BitboardType, board: &Board) -> bool{ //chec
     }
 }
 
-pub fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:BitboardType, board:&Board) -> bool{
+pub fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:BitboardType, board:&Board, has_castled:&mut HasCastled) -> bool{
     if !is_own_piece(start_bitboard, board) {
         return false;
     }
@@ -772,7 +918,7 @@ pub fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:Bitb
     let (_, current_piece_i) = identify_chosen_piece(board, start_bitboard);
     // let current_piece = board.all_pieces[current_piece_i];
 
-    let legal_moves = single_piece_moves(&board.all_pieces[current_piece_i], start_bitboard, &board.merged_boards);
+    let legal_moves = single_piece_moves(&board.all_pieces[current_piece_i], start_bitboard, &board.merged_boards, has_castled);
 
     // let legal_moves:BitboardType = if current_piece.piece == PieceType::Pawn{//Because pawns move differently
     //     pawn_legal_moves(&current_piece, &board.merged_boards)
@@ -780,7 +926,7 @@ pub fn filter_noneplayable_squares(start_bitboard:BitboardType, to_bitboard:Bitb
     //     current_piece.attack
     // };
 
-    if legal_moves & to_bitboard == 0b0 {
+    if legal_moves & to_bitboard == 0 {
         return false;
     }
     return true //if it passed filter then return true
@@ -812,11 +958,11 @@ pub fn identify_chosen_piece(board:&Board, chosen_bitboard:BitboardType) -> (u64
 }
 
 
-pub fn print_possible_moves(board: &Board, chosen_bitboard:BitboardType) {
+pub fn print_possible_moves(board: &Board, chosen_bitboard:BitboardType, has_castled:&mut HasCastled) {
     //Chosen bitboards
     let (_, current_i) = identify_chosen_piece(board, chosen_bitboard);
     let piece = board.all_pieces[current_i];
-    let moves = single_piece_moves(&piece, chosen_bitboard, &board.merged_boards);
+    let moves = single_piece_moves(&piece, chosen_bitboard, &board.merged_boards, has_castled);
     print_board(moves);
 
 }
@@ -845,6 +991,7 @@ pub fn print_board(bitboard:BitboardType) {
 #[test]
 fn play_game() {
     let mut board = Board::new();
+    let mut has_castled = HasCastled::new();
 
     loop {
         print_board(board.merged_boards[I_OCCUPIED]);
@@ -863,16 +1010,16 @@ fn play_game() {
             continue
         }
 
-        print_possible_moves(&board, start_bitboard);
-
         print_board(board.merged_boards[I_WHITE_POS]|board.merged_boards[I_BLACK_POS]);
+        print_possible_moves(&board, start_bitboard, &mut has_castled);
+
 
         //taking to input:
         println!("Where do you want to move: ");
         let to_coords = taking_input();
         // let to_bitboard = input_coordinates(to_coords[0], to_coords[1]);
 
-        if board.making_move(start_coords, to_coords) {
+        if board.making_move(start_coords, to_coords, &mut has_castled) {
             println!("move made")
         } else {
             println!("Illegal move, try again")
@@ -889,7 +1036,54 @@ fn a1_has_white_piece() {
     assert!(a1 & board.merged_boards[I_WHITE_POS] != 0) //will panic if not true i think
 }
 
+#[test]
+fn testing_castling() {
+    let mut board = Board::new();
+    //3 and 5 and 9, 11
+    for i in 0..12 {
+        if i == 3 || i == 5 || i == 9 || i == 11 {
+            continue
+        }
+        board.all_pieces[i].position = 0;
+        board.all_pieces[i].attack = 0;
+    }
+        let mut has_castled = HasCastled::new();
+    board.recalculate_attacks();
+    loop {
+        print_board(board.merged_boards[I_OCCUPIED]);
 
+        println!("It's {}'s turn to move, enter coordinates: ", if board.turn == ColorType::White {"white"} else {"black"});
+
+        //taking start input:
+        let start_coords = taking_input();
+        let start_bitboard = input_coordinates(start_coords[0], start_coords[1]);
+
+        // println!("hii");
+        // println!("{:b}", start_bitboard);
+        // println!("{}", is_own_piece(start_bitboard, &board));
+        if is_own_piece(start_bitboard, &board) == false{
+            println!("This isnt your piece, try again");
+            continue
+        }
+
+        print_board(board.merged_boards[I_WHITE_POS]|board.merged_boards[I_BLACK_POS]);
+        print_possible_moves(&board, start_bitboard, &mut has_castled);
+
+
+        //taking to input:
+        println!("Where do you want to move: ");
+        let to_coords = taking_input();
+        // let to_bitboard = input_coordinates(to_coords[0], to_coords[1]);
+
+        if board.making_move(start_coords, to_coords, &mut has_castled) {
+            println!("move made")
+        } else {
+            println!("Illegal move, try again")
+        }
+        // filter_noneplayable_squares(start_bitboard, to_bitboard, &board)
+    }
+
+}
 //if i have time later i can try implementing this maybe after i finish catsling.... ans en passant...
 // #[test]
 // perft(board, depth):

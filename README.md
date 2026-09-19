@@ -47,6 +47,7 @@ print_board() prints the board where 0,0 is right bottom. 7, 7 is left top
 
 
 example setup:
+
 fn main() {
     let mut board = Board::new();
 
